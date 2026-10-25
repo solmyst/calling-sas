@@ -1,0 +1,981 @@
+[
+  {
+    "file": "redaction.py",
+    "lines": 112,
+    "symbols": [
+      "_digits:50",
+      "redact:54",
+      "_demo:70"
+    ]
+  },
+  {
+    "file": "domain.py",
+    "lines": 177,
+    "symbols": [
+      "_fail:56",
+      "build_call_card:74",
+      "recheck_card:89",
+      "customer_phone:98",
+      "build_guard:108",
+      "build_tools:131",
+      "build_system_prompt:146",
+      "build_opening_line:162"
+    ]
+  },
+  {
+    "file": "guardrails.py",
+    "lines": 559,
+    "symbols": [
+      "is_script_drift:127",
+      "romanise_strays:230",
+      "_spell_registration:278",
+      "sarvam_steer:284",
+      "speakable:314",
+      "is_hindi_speech:322",
+      "is_machine_output:334",
+      "keep_lead:355",
+      "is_noise:434",
+      "_demo:501"
+    ]
+  },
+  {
+    "file": "guard_core.py",
+    "lines": 125,
+    "symbols": [
+      "is_voicemail_announcement:92",
+      "_line_key:107",
+      "near_repeat:114"
+    ]
+  },
+  {
+    "file": "domains/__init__.py",
+    "lines": 0,
+    "symbols": []
+  },
+  {
+    "file": "docs/gen_insurance_research_pdf.py",
+    "lines": 718,
+    "symbols": [
+      "PDF:11",
+      "main:148"
+    ]
+  },
+  {
+    "file": "scripts/check_service_boundaries.py",
+    "lines": 87,
+    "symbols": [
+      "check:25"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_call_card_safety.py",
+    "lines": 82,
+    "symbols": [
+      "CardSafetyTests:14"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_oct22b_guard.py",
+    "lines": 122,
+    "symbols": [
+      "_g:17",
+      "_on_form:22",
+      "Tests:29"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_heard.py",
+    "lines": 23,
+    "symbols": []
+  },
+  {
+    "file": "voicebot/server/test_phone_body.py",
+    "lines": 131,
+    "symbols": [
+      "_G:66",
+      "_Latched:82",
+      "_http_error:92"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_voice_health.py",
+    "lines": 52,
+    "symbols": [
+      "HealthTests:12"
+    ]
+  },
+  {
+    "file": "voicebot/server/callerdesk_bridge.py",
+    "lines": 770,
+    "symbols": [
+      "to_slin:58",
+      "proposal_from_uuid:77",
+      "phone_from_uuid:85",
+      "phone_key:96",
+      "dialed_proposal_for:102",
+      "_pending_edit:143",
+      "add_pending:175",
+      "drop_pending:186",
+      "take_pending:195",
+      "_SpeechWatch:230",
+      "wait_for_answer:271",
+      "_live_status:315",
+      "wait_for_pickup:327",
+      "read_frame:410",
+      "frame:415",
+      "pick_bot:426",
+      "handle:432",
+      "_bridge:457",
+      "dial:665",
+      "_redact:716",
+      "_dial_api:721",
+      "main:754"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_tts_cache.py",
+    "lines": 109,
+    "symbols": [
+      "_Svc:14",
+      "_audio:47",
+      "_synth:55",
+      "main:64"
+    ]
+  },
+  {
+    "file": "voicebot/server/voice_gate.py",
+    "lines": 85,
+    "symbols": [
+      "PrimaryVoiceGate:19"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_response_quality.py",
+    "lines": 313,
+    "symbols": [
+      "ResponseQualityTests:14",
+      "GuardAuditReplyTests:267"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_cx_remark.py",
+    "lines": 64,
+    "symbols": [
+      "Fake:35"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_f1_safety.py",
+    "lines": 294,
+    "symbols": [
+      "_confirmed:21",
+      "IdentityGate:27",
+      "NeverSay:75",
+      "RailsTiming:104",
+      "LinkRail:131",
+      "Dispositions:153",
+      "EnglishFallback:180",
+      "BadAnswerRegressions:198",
+      "PlaygroundCallBugs:234",
+      "PacingAndDisposition:263"
+    ]
+  },
+  {
+    "file": "voicebot/server/whatsapp.py",
+    "lines": 261,
+    "symbols": [
+      "valid_kyc_link:46",
+      "_positive_id:51",
+      "kyc_link:55",
+      "normalise_phone:80",
+      "link_ready:88",
+      "notif_ready:121",
+      "_send_via_notification_go:126",
+      "send_kyc_link:160"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_delivery_safety.py",
+    "lines": 62,
+    "symbols": [
+      "DeliverySafetyTests:14"
+    ]
+  },
+  {
+    "file": "voicebot/server/parkplus_stt.py",
+    "lines": 314,
+    "symbols": [
+      "ParkPlusSTTService:57"
+    ]
+  },
+  {
+    "file": "voicebot/server/bifrost_stt.py",
+    "lines": 157,
+    "symbols": [
+      "BifrostSarvamSTTService:34"
+    ]
+  },
+  {
+    "file": "voicebot/server/kyc_dialer.py",
+    "lines": 388,
+    "symbols": [
+      "in_calling_hours:87",
+      "cohort:91",
+      "_when:126",
+      "recent_dashboard_remarks:131",
+      "recent_calls:166",
+      "decide:183",
+      "log_call:208",
+      "wait_call_end:230",
+      "ring:255",
+      "run:292",
+      "main:381"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_report_fixes.py",
+    "lines": 143,
+    "symbols": [
+      "_Gate:29",
+      "_noop:38",
+      "_turns:42",
+      "test_ivr_text:59",
+      "test_ivr_on_a_later_turn_ends_the_call:66",
+      "test_form_steps_are_guard_steps:72",
+      "test_no_human_remark_is_fixed:77",
+      "test_cut_call_is_not_link_sent:96",
+      "test_oct21_labels_and_dedup:117"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_vm_loop_blocker.py",
+    "lines": 80,
+    "symbols": [
+      "_on_form:20",
+      "Tests:28"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_guard_relative_purchase.py",
+    "lines": 101,
+    "symbols": [
+      "RelativePurchaseTests:18"
+    ]
+  },
+  {
+    "file": "voicebot/server/turn_reader.py",
+    "lines": 129,
+    "symbols": [
+      "build_messages:75",
+      "parse:85",
+      "_demo:111"
+    ]
+  },
+  {
+    "file": "voicebot/server/intent_rewrite.py",
+    "lines": 373,
+    "symbols": [
+      "prompt_for:189",
+      "system_prompt:231",
+      "build_messages:236",
+      "parse:253",
+      "needs_rewrite:294",
+      "_words:315",
+      "_overlap:319",
+      "vet:325",
+      "hint_line:358"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_idle_nudge.py",
+    "lines": 57,
+    "symbols": [
+      "_pushed:18",
+      "IdleNudgeOvertalkTests:22"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_oct24_recordings.py",
+    "lines": 109,
+    "symbols": [
+      "guard:18",
+      "RecordingRegressions:24"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_stt_failover.py",
+    "lines": 148,
+    "symbols": [
+      "_DeadAfterFirst:23",
+      "_Backup:41",
+      "main:55",
+      "bifrost_takeover:113"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_oct22_guard.py",
+    "lines": 97,
+    "symbols": [
+      "_g:18",
+      "Tests:23"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_prompt_prefix.py",
+    "lines": 33,
+    "symbols": [
+      "shared:14"
+    ]
+  },
+  {
+    "file": "voicebot/server/call_trace.py",
+    "lines": 348,
+    "symbols": [
+      "Hit:36",
+      "Turn:47",
+      "CallTrace:60",
+      "start:201",
+      "current:209",
+      "hit:213",
+      "thread:224",
+      "_s:237",
+      "_pct:241",
+      "_dur:246",
+      "_clock:251",
+      "_cell:255",
+      "_table_service:259",
+      "_table_turns:265",
+      "_transcript_lines:276",
+      "_esc:293",
+      "_md:297",
+      "_code:301",
+      "_chunks:305"
+    ]
+  },
+  {
+    "file": "voicebot/server/cx_remark.py",
+    "lines": 150,
+    "symbols": [
+      "no_human:63",
+      "enabled:68",
+      "one_line:72",
+      "label:95",
+      "body:105",
+      "send:127"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_callerdesk_bridge.py",
+    "lines": 511,
+    "symbols": [
+      "roundtrip:27",
+      "outbound:37",
+      "paced:73",
+      "playback:118",
+      "FakeCallerDesk:202",
+      "api_dial:225",
+      "timed_out_dial:471"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_kyc_dialer.py",
+    "lines": 335,
+    "symbols": [
+      "follow:71",
+      "fake_dial:85",
+      "fake_follow:90",
+      "run:106",
+      "FixedDateTime:116",
+      "timeout_dial:177",
+      "http_exception_dial:186",
+      "_FakeResponse:296",
+      "flaky_once:307"
+    ]
+  },
+  {
+    "file": "voicebot/server/bot.py",
+    "lines": 3739,
+    "symbols": [
+      "_align_tag:145",
+      "_setup_logging:152",
+      "FillerInjector:196",
+      "NoiseGate:221",
+      "split_heard:276",
+      "CallLogObserver:295",
+      "_bot_owned_lines:649",
+      "_actual_handover:690",
+      "_in_callers_language:750",
+      "_Resumable:755",
+      "_case_key:766",
+      "_purge_resumable:774",
+      "_take_resumable:781",
+      "_save_resumable:790",
+      "_dropped_mid_call:795",
+      "_message_role:809",
+      "_message_text:815",
+      "_estimate_tokens:822",
+      "_reasoning_effort:833",
+      "_stt_keyterms:880",
+      "_stt_prompt:899",
+      "_extra_groq_keys:929",
+      "_retry_after_seconds:1072",
+      "_is_retryable:1081",
+      "_is_dead_endpoint:1111",
+      "Endpoint:1145",
+      "FailoverLLMService:1161",
+      "SpeakableFilter:1920",
+      "GuardFilter:1939",
+      "_make_escalate_tool:2022",
+      "end_call:2061",
+      "_call_limit_secs:2073",
+      "run_bot:2135",
+      "_run_bot:2152",
+      "_assemblyai_ok:3385",
+      "_assemblyai_probe:3417",
+      "_send_link_if_wanted:3429",
+      "_needs_verified_card:3467",
+      "_is_caseless_leg:3477",
+      "_intro_spoken:3502",
+      "_truthful_outcome:3507",
+      "_is_ivr_text:3519",
+      "_is_ivr_text_f1:3525",
+      "_require_phone_card:3531",
+      "_AssemblyAISTT:3543",
+      "_sarvam_backup_stt:3557",
+      "_sarvam_stt:3569",
+      "_phone_body:3600",
+      "_voice_gate:3638",
+      "bot:3649",
+      "_take_proposal_flag:3687"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_dropdowns_guard.py",
+    "lines": 78,
+    "symbols": [
+      "_hint:19",
+      "Tests:26"
+    ]
+  },
+  {
+    "file": "voicebot/server/kyc_text_demo.py",
+    "lines": 384,
+    "symbols": [
+      "model_name:82",
+      "est_tokens:92",
+      "Session:96",
+      "Handler:319",
+      "main:374"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_guard_audit.py",
+    "lines": 58,
+    "symbols": [
+      "GuardAnswerPreservationTests:8"
+    ]
+  },
+  {
+    "file": "voicebot/server/kyc_voice_demo.py",
+    "lines": 600,
+    "symbols": [
+      "aai_url:123",
+      "est_tokens:145",
+      "Call:149",
+      "ws_handler:470",
+      "index:543",
+      "cert:548",
+      "main_app:564",
+      "serve:573"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_state_transition_regressions.py",
+    "lines": 1037,
+    "symbols": [
+      "StateTransitionTests:14",
+      "_opened:348",
+      "GuardAuditRegressionTests:354",
+      "CallReview20261013Tests:488",
+      "ProductOwnerListening20261013Tests:563",
+      "Call33CallbackTests:643",
+      "CallIssues20261013GroupBTests:691",
+      "CallIssuesReportRealLinesTests:776",
+      "VoicemailDetectionTests:852",
+      "LiveCalls20261013Tests:869",
+      "ProductOwner20261014Tests:971"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_callbacks_nudge_resend.py",
+    "lines": 259,
+    "symbols": [
+      "write_log:31",
+      "row:39",
+      "DialedProposalTest:44",
+      "BridgeStartTest:78",
+      "IdleNudgeTest:146",
+      "FakeGuard:169",
+      "LinkResendTest:183"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_intent_rewrite.py",
+    "lines": 316,
+    "symbols": [
+      "_Context:123",
+      "_Service:131",
+      "_Client:157",
+      "_fresh:181",
+      "_move_endpoint:226",
+      "_ReaderService:255",
+      "_reader_case:260",
+      "_HintService:285",
+      "_examples_for:298"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_e14_guard.py",
+    "lines": 37,
+    "symbols": [
+      "_g:12",
+      "Tests:19"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_call_fallback.py",
+    "lines": 168,
+    "symbols": [
+      "FallbackTests:12",
+      "LiveTTSFallbackTests:29",
+      "MustFallBackTests:91",
+      "LLMFailureAndFillerTests:111"
+    ]
+  },
+  {
+    "file": "voicebot/server/voice_health.py",
+    "lines": 243,
+    "symbols": [
+      "mark_failed:26",
+      "latched_failure:35",
+      "clear_failed:45",
+      "recently_ready:49",
+      "remember_ready:60",
+      "HealthReport:69",
+      "check_stt:89",
+      "_llm_probe:106",
+      "check_llm:143",
+      "check_tts:147",
+      "_bifrost_tts_probe:178",
+      "check_bridge:199",
+      "check:234"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_oct21_guard.py",
+    "lines": 92,
+    "symbols": [
+      "_on_form:16",
+      "Tests:24"
+    ]
+  },
+  {
+    "file": "voicebot/server/fallback_sarvam_tts.py",
+    "lines": 112,
+    "symbols": [
+      "register_fixed:23",
+      "FallbackSarvamTTSService:27"
+    ]
+  },
+  {
+    "file": "voicebot/server/bifrost_tts.py",
+    "lines": 219,
+    "symbols": [
+      "wav_to_pcm:26",
+      "tts_chunks:43",
+      "BifrostSarvamTTSService:71"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_launch_regressions.py",
+    "lines": 169,
+    "symbols": [
+      "CustomerCardTests:24",
+      "WhatsAppTests:44",
+      "BridgeTests:95"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_llm_latency.py",
+    "lines": 263,
+    "symbols": [
+      "chunk:11",
+      "Stream:16",
+      "LatencyTests:38",
+      "SarvamProviderTests:161",
+      "TranscriptIsolationTests:205",
+      "PhoneCardTests:218"
+    ]
+  },
+  {
+    "file": "voicebot/server/elevenlabs_fallback.py",
+    "lines": 27,
+    "symbols": [
+      "synthesise:10"
+    ]
+  },
+  {
+    "file": "voicebot/server/slack.py",
+    "lines": 119,
+    "symbols": [
+      "enabled:28",
+      "post:33",
+      "post_blocks:40",
+      "_send_json:48",
+      "_alert_key:79",
+      "should_alert:84",
+      "alert_filter:97",
+      "alert_sink:104"
+    ]
+  },
+  {
+    "file": "voicebot/server/call_fallback.py",
+    "lines": 48,
+    "symbols": [
+      "duration_secs:14",
+      "is_tts_error:18",
+      "must_fall_back:25",
+      "audio_frames:38"
+    ]
+  },
+  {
+    "file": "voicebot/server/test_noise_gate.py",
+    "lines": 83,
+    "symbols": [
+      "_demo:66"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/judge_llm.py",
+    "lines": 94,
+    "symbols": [
+      "make_judge:24"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/stt_latency.py",
+    "lines": 154,
+    "symbols": [
+      "speech:45",
+      "speech_end:63",
+      "stream:75",
+      "assemblyai:84",
+      "sarvam:103",
+      "main:137"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/rewrite_eval.py",
+    "lines": 233,
+    "symbols": [
+      "_convo:58",
+      "_judge:63",
+      "_checks:88",
+      "run:111",
+      "main:189"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/phone_sim.py",
+    "lines": 138,
+    "symbols": [
+      "Exotel:31",
+      "AudioSocket:57",
+      "call:84"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/fuzz_guard.py",
+    "lines": 145,
+    "symbols": [
+      "one:99",
+      "main:118"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/quality_call_scenarios.py",
+    "lines": 97,
+    "symbols": [
+      "main:58"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/prepay_selfplay.py",
+    "lines": 204,
+    "symbols": [
+      "_bifrost:111",
+      "play:124",
+      "judge:157",
+      "main:169"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/flow_judge.py",
+    "lines": 174,
+    "symbols": [
+      "walk:97",
+      "main:151"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/judge_replies.py",
+    "lines": 110,
+    "symbols": [
+      "_judge:49",
+      "grade:76"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/real_turns.py",
+    "lines": 362,
+    "symbols": [
+      "parse:99",
+      "_norm:140",
+      "_repeat_of:144",
+      "_card:152",
+      "replay:157",
+      "_link_flags:227",
+      "judge:237",
+      "summary:287",
+      "compare:307",
+      "main:319"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/judge_claude.py",
+    "lines": 108,
+    "symbols": [
+      "export:21",
+      "score:38",
+      "pair_export:65",
+      "pair_score:87"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/stt_bench.py",
+    "lines": 215,
+    "symbols": [
+      "_voice:48",
+      "mix:67",
+      "gated:83",
+      "_stream:91",
+      "_keyterms:101",
+      "aai:107",
+      "elevenlabs:132",
+      "sarvam:156",
+      "main:172"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/llm_bench.py",
+    "lines": 367,
+    "symbols": [
+      "_turn_rule:57",
+      "_steer:68",
+      "_registry:80",
+      "_stream:119",
+      "_side:169",
+      "_convo:176",
+      "run_scenario:181",
+      "_pct:261",
+      "summarise:266",
+      "rewrite_only:299",
+      "main:330"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/ab_models.py",
+    "lines": 662,
+    "symbols": [
+      "_endpoints:51",
+      "_post:312",
+      "_rewrite_note:345",
+      "_read_turn:372",
+      "_guarded:389",
+      "run_scenario:400",
+      "_found:534",
+      "_check:542",
+      "_repeats:560",
+      "summarise:582",
+      "main:623"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/build_gold.py",
+    "lines": 59,
+    "symbols": [
+      "templatize:25",
+      "main:35"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/row_corpus.py",
+    "lines": 123,
+    "symbols": [
+      "_opening:46",
+      "_mid_form:52",
+      "row_for:66",
+      "main:77"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/export_sft.py",
+    "lines": 55,
+    "symbols": [
+      "main:26"
+    ]
+  },
+  {
+    "file": "voicebot/server/evals/replay_calls.py",
+    "lines": 85,
+    "symbols": [
+      "sessions:33",
+      "main:55"
+    ]
+  },
+  {
+    "file": "domains/money/__init__.py",
+    "lines": 0,
+    "symbols": []
+  },
+  {
+    "file": "domains/money/call_card.py",
+    "lines": 413,
+    "symbols": [
+      "gender_tokens:96",
+      "name_in_line:107",
+      "_amount_in_words:113",
+      "derive_drop_page:135",
+      "derive_goal:171",
+      "build:176",
+      "from_body:243",
+      "fetch:266",
+      "customer_phone:279",
+      "render:289",
+      "_demo:348"
+    ]
+  },
+  {
+    "file": "domains/money/guard.py",
+    "lines": 871,
+    "symbols": [
+      "F1Guard:211",
+      "_is_x18_fragment:637",
+      "build_guard:642",
+      "_demo:649"
+    ]
+  },
+  {
+    "file": "domains/money/prompt.py",
+    "lines": 297,
+    "symbols": [
+      "opening_line:186",
+      "_agent_desc:197",
+      "build_system_prompt:201",
+      "_demo:237"
+    ]
+  },
+  {
+    "file": "domains/insurance/__init__.py",
+    "lines": 0,
+    "symbols": []
+  },
+  {
+    "file": "domains/insurance/postpayment/__init__.py",
+    "lines": 0,
+    "symbols": []
+  },
+  {
+    "file": "domains/insurance/postpayment/call_card.py",
+    "lines": 941,
+    "symbols": [
+      "_speakable_date:199",
+      "_strip_identifiers:220",
+      "derive_goal:225",
+      "build:264",
+      "_flag_sql:377",
+      "_clean_name:424",
+      "_lookup_config:442",
+      "fetch:456",
+      "fresh:512",
+      "customer_phone:523",
+      "_row_from_dataset:573",
+      "from_body:601",
+      "render:626",
+      "_demo_fetch:716",
+      "_demo:774"
+    ]
+  },
+  {
+    "file": "domains/insurance/postpayment/guard.py",
+    "lines": 10041,
+    "symbols": [
+      "_invents_reward:532",
+      "_vocative_re:657",
+      "_roman_hindi:762",
+      "_does_it_later:1134",
+      "_drop_honorific:1186",
+      "follow_up_time:1257",
+      "_polish:1338",
+      "callback_phrase:1348",
+      "follow_up_from:1372",
+      "_in_a_hurry:1401",
+      "_refuses:1610",
+      "_refuses_again:1624",
+      "_relative_purchase:1723",
+      "_grams:1953",
+      "_gold_index:1960",
+      "_caller_said_bye:2293",
+      "_roman_hindi_tok:2346",
+      "_language_counts:2352",
+      "_is_english_line:2368",
+      "_is_hindi_line:2373",
+      "_is_english_reply:2378",
+      "gold_examples:2451",
+      "_contact_only:2624",
+      "_caller_has_question:2629",
+      "_asks_vehicle_details:2636",
+      "_step_of:2892",
+      "_asks_who:2975",
+      "_says_no_pan:3022",
+      "_entry_not_done:3028",
+      "_reported_step:3036",
+      "_next_was_pressed:3051",
+      "_roman_lines:3095",
+      "_end:3324",
+      "KycGuard:3386",
+      "_demo:7121"
+    ]
+  },
+  {
+    "file": "domains/insurance/postpayment/prompt.py",
+    "lines": 1508,
+    "symbols": [
+      "insurer_key:29",
+      "asks_for:40",
+      "drop_pan:55",
+      "_roman_key:415",
+      "_romanise:422",
+      "_format_context:624",
+      "_insurer_form_delta:819",
+      "_format_ladder:889",
+      "_format_mandate:894",
+      "opening_line:907",
+      "build_system_prompt:953",
+      "_fit_to_insurer:960",
+      "_build_devanagari_prompt:988",
+      "_est_tokens:1055",
+      "_demo:1067"
+    ]
+  }
+]
