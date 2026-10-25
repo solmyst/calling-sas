@@ -43,13 +43,14 @@ class BoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = temp + "/db.sqlite"
             with TestClient(create_app(path)) as c:
-                a = c.get("/api/state").json()["agents"][0]
+                a = next(x for x in c.get("/api/state").json()["agents"] if x["id"] == "agent-sales")
                 a["name"] = "Persistent Agent"
                 c.put("/api/agents/" + a["id"], json=a)
             with TestClient(create_app(path)) as c:
                 state = c.get("/api/state").json()
                 self.assertIn("Persistent Agent", [a["name"] for a in state["agents"]])
-                self.assertEqual(state["metrics"]["seeded"], 18)
+                self.assertIn("Nisha", [a["name"] for a in state["agents"]])
+                self.assertEqual(state["metrics"]["seeded"], 0)
 
     def test_negative_confirmation_is_not_success(self):
         with (

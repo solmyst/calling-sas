@@ -1,17 +1,19 @@
-import hashlib, hmac, logging, os, re, secrets, time, uuid
+import asyncio, base64, hashlib, hmac, logging, os, re, secrets, time, uuid
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Literal
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from websockets.asyncio.client import connect as websocket_connect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .store import Store
 from .engine import DemoProvider, LiveCallingDisabled, now, private
 from .seed import seed
+from .voice import VoiceConfigurationError, VoiceEngine, VoiceProviderError
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env", override=False)
@@ -32,7 +34,7 @@ class Agent(Model):
         "sales",
     ] = "lead_qualification"
     industry: str = Field(default="General business", max_length=80)
-    language: Literal["English"] = "English"
+    language: Literal["English", "Hindi", "Hinglish"] = "English"
     status: Literal["active", "paused"] = "active"
     opening: str = Field(min_length=1, max_length=1200)
     question: str = Field(min_length=1, max_length=1200)
@@ -84,6 +86,10 @@ class Turn(Model):
     request_id: str = Field(
         default_factory=lambda: uuid.uuid4().hex, max_length=100, min_length=1
     )
+
+
+class VoiceText(Model):
+    text: str = Field(min_length=1, max_length=2000)
 
 
 class Run(Model):
@@ -147,7 +153,7 @@ def metrics(calls):
     )
 
 
-def create_app(db_path=None):
+def create_app(db_path=None, voice_engine=None):
     environment = os.getenv("APP_ENV", "local")
     password = os.getenv("DEMO_PASSWORD", "")
     secret = os.getenv("SESSION_SECRET", "") or secrets.token_hex(32)
@@ -176,6 +182,7 @@ def create_app(db_path=None):
     )
     seed(store)
     provider = DemoProvider()
+    voice = voice_engine or VoiceEngine()
     app = FastAPI(
         title="Relay Voice",
         version="0.1.0",
@@ -214,7 +221,8 @@ def create_app(db_path=None):
                 return JSONResponse(
                     {"detail": "Invalid content length"}, status_code=400
                 )
-            if size > 64000:
+            limit = 8_000_000 if "/voice/turn" in request.url.path else 64000
+            if size > limit:
                 return JSONResponse({"detail": "Request too large"}, status_code=413)
         if (
             request.url.path.startswith("/api/")
@@ -232,7 +240,7 @@ def create_app(db_path=None):
                 "Referrer-Policy": "no-referrer",
                 "X-Frame-Options": "DENY",
                 "Cache-Control": "no-store",
-                "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+                "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
             }
         )
         if environment != "local":
@@ -243,7 +251,7 @@ def create_app(db_path=None):
     def health():
         with store.transaction() as db:
             db.execute("SELECT 1")
-        return {"status": "ok", "mode": "demo", "version": "0.1.0"}
+        return {"status": "ok", "mode": "demo", "voice_ready": voice.ready, "version": "0.2.0"}
 
     @app.get("/api/session")
     def session(request: Request):
@@ -295,13 +303,14 @@ def create_app(db_path=None):
         data["calls"].sort(key=lambda c: c["started_at"], reverse=True)
         data["metrics"] = metrics(data["calls"])
         data["settings"] = {
-            "mode": "demo",
+            "mode": "browser_voice" if voice.ready else "demo",
             "telephony": "disabled",
-            "conversation_engine": "Offline simulator",
-            "ai_connected": False,
+            "conversation_engine": "Bifrost + AssemblyAI + ElevenLabs" if voice.ready else "Offline simulator",
+            "ai_connected": voice.ready,
+            "voice_providers": voice.providers,
             "workspace": "Northstar workspace",
             "authentication": bool(password),
-            "version": "0.1.0",
+            "version": "0.2.0",
         }
         return data
 
@@ -341,7 +350,7 @@ def create_app(db_path=None):
     def edit_workflow(id: str, body: Workflow):
         return save("workflows", body, id)
 
-    def make_call(db, aid, cid, wid=None):
+    def make_call(db, aid, cid, wid=None, mode="demo"):
         a = require(db, "agents", aid)
         c = require(db, "contacts", cid)
         if a["status"] != "active":
@@ -350,7 +359,7 @@ def create_app(db_path=None):
             raise HTTPException(409, "Contact is opted out or has no recorded consent.")
         call = dict(
             id=uuid.uuid4().hex,
-            mode="demo",
+            mode=mode,
             source="workflow" if wid else "interactive",
             status="in_progress",
             outcome=None,
@@ -392,7 +401,12 @@ def create_app(db_path=None):
 
     @app.post("/api/calls")
     def start(body: Start):
-        if body.mode != "demo":
+        if body.mode == "browser":
+            try:
+                voice.require_ready()
+            except VoiceConfigurationError as e:
+                raise HTTPException(503, str(e))
+        elif body.mode != "demo":
             try:
                 LiveCallingDisabled().start()
             except PermissionError as e:
@@ -409,10 +423,129 @@ def create_app(db_path=None):
                         409, "Request ID already used with different inputs"
                     )
                 return require(db, "calls", cached["id"])
-            c = make_call(db, body.agent_id, body.contact_id)
+            c = make_call(db, body.agent_id, body.contact_id, mode=body.mode)
             Store.cache(db, key, c)
-        logging.getLogger("uvicorn.error").info("call_created id=%s mode=demo", c["id"])
+        logging.getLogger("uvicorn.error").info("call_created id=%s mode=%s", c["id"], c["mode"])
         return c
+
+    @app.post("/api/calls/{id}/voice/opening")
+    async def voice_opening(id: str):
+        with store.transaction() as db:
+            c = require(db, "calls", id)
+        if c["mode"] != "browser":
+            raise HTTPException(409, "This is not a browser voice session.")
+        try:
+            audio = await voice.speak(c["transcript"][0]["text"])
+        except (VoiceConfigurationError, VoiceProviderError) as e:
+            raise HTTPException(503, str(e))
+        return {"audio": base64.b64encode(audio).decode(), "content_type": "audio/mpeg"}
+
+    @app.post("/api/calls/{id}/voice/turn")
+    async def voice_turn(id: str, request: Request):
+        content_type = request.headers.get("content-type", "").split(";", 1)[0]
+        if content_type not in ("audio/webm", "audio/mp4", "audio/ogg"):
+            raise HTTPException(415, "Unsupported browser audio format.")
+        audio = await request.body()
+        if not audio or len(audio) > 8_000_000:
+            raise HTTPException(413 if audio else 400, "Microphone audio is empty or too large.")
+        with store.transaction() as db:
+            c = require(db, "calls", id)
+            if c["mode"] != "browser" or c["status"] != "in_progress":
+                raise HTTPException(409, "This browser voice session has ended.")
+        try:
+            customer_text = private(await voice.transcribe(audio, content_type))
+            c["transcript"].append({"role": "customer", "text": customer_text, "at": now()})
+            assistant_text = private(await voice.reply(c))
+            generated_audio = await voice.speak(assistant_text)
+        except (VoiceConfigurationError, VoiceProviderError, ValueError) as e:
+            raise HTTPException(503, str(e))
+        c["transcript"].append({"role": "agent", "text": assistant_text, "at": now()})
+        with store.transaction() as db:
+            latest = require(db, "calls", id)
+            if latest["status"] != "in_progress":
+                raise HTTPException(409, "This browser voice session has ended.")
+            latest["transcript"] = c["transcript"]
+            Store.put(db, "calls", latest)
+        return {
+            "call": latest,
+            "transcript": customer_text,
+            "reply": assistant_text,
+            "audio": base64.b64encode(generated_audio).decode(),
+            "content_type": "audio/mpeg",
+        }
+
+    @app.websocket("/api/calls/{id}/voice/stream")
+    async def voice_stream(websocket: WebSocket, id: str):
+        request_origin = websocket.headers.get("origin")
+        if request_origin and request_origin not in origins:
+            await websocket.close(code=1008)
+            return
+        if password and not valid(websocket.cookies.get("relay_session", "")):
+            await websocket.close(code=1008)
+            return
+        with store.transaction() as db:
+            c = Store.get(db, "calls", id)
+        if not c or c.get("mode") != "browser" or c.get("status") != "in_progress":
+            await websocket.close(code=1008)
+            return
+        try:
+            voice.require_ready()
+            await websocket.accept()
+            async with websocket_connect(
+                voice.streaming_stt_url_for(c["agent_snapshot"].get("language", "English")),
+                additional_headers={"Authorization": voice.config.assemblyai_key},
+                compression=None,
+                open_timeout=10,
+            ) as upstream:
+                async def send_audio():
+                    try:
+                        while True:
+                            chunk = await websocket.receive_bytes()
+                            if chunk:
+                                await upstream.send(chunk)
+                    except WebSocketDisconnect:
+                        try:
+                            await upstream.send('{"type":"Terminate"}')
+                        except Exception:
+                            pass
+
+                async def send_transcripts():
+                    async for message in upstream:
+                        await websocket.send_text(message)
+
+                tasks = [asyncio.create_task(send_audio()), asyncio.create_task(send_transcripts())]
+                done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    task.cancel()
+        except Exception:
+            logging.getLogger("uvicorn.error").exception("streaming_stt_failed call_id=%s", id)
+            try:
+                await websocket.close(code=1011)
+            except Exception:
+                pass
+
+    @app.post("/api/calls/{id}/voice/respond")
+    async def voice_respond(id: str, body: VoiceText):
+        with store.transaction() as db:
+            c = require(db, "calls", id)
+            if c["mode"] != "browser" or c["status"] != "in_progress":
+                raise HTTPException(409, "This browser voice session has ended.")
+        try:
+            customer_text = private(body.text)
+            c["transcript"].append({"role": "customer", "text": customer_text, "at": now()})
+            assistant_text = private(await voice.reply(c))
+            generated_audio = await voice.speak(assistant_text)
+        except (VoiceConfigurationError, VoiceProviderError, ValueError) as e:
+            raise HTTPException(503, str(e))
+        c["transcript"].append({"role": "agent", "text": assistant_text, "at": now()})
+        with store.transaction() as db:
+            latest = require(db, "calls", id)
+            if latest["status"] != "in_progress":
+                raise HTTPException(409, "This browser voice session has ended.")
+            latest["transcript"] = c["transcript"]
+            Store.put(db, "calls", latest)
+        return {"call": latest, "transcript": customer_text, "reply": assistant_text,
+                "audio": base64.b64encode(generated_audio).decode(), "content_type": "audio/mpeg"}
 
     @app.get("/api/calls/{id}")
     def get_call(id: str):
@@ -443,11 +576,16 @@ def create_app(db_path=None):
         with store.transaction() as db:
             c = require(db, "calls", id)
             if c["status"] == "in_progress":
+                browser = c["mode"] == "browser"
                 c.update(
                     status="cancelled",
                     outcome="cancelled",
                     ended_at=now(),
-                    summary="Simulation ended by the operator.",
+                    summary=(
+                        "Browser voice session ended by the operator."
+                        if browser
+                        else "Simulation ended by the operator."
+                    ),
                     next_action="No action",
                 )
                 Store.put(db, "calls", c)
@@ -457,7 +595,8 @@ def create_app(db_path=None):
     def export(id: str):
         with store.transaction() as db:
             c = require(db, "calls", id)
-        txt = f"RELAY VOICE — SIMULATED CALL\nCall: {c['id']}\nAgent: {c['agent_snapshot']['name']}\nOutcome: {c['outcome'] or 'In progress'}\n{c['summary']}\n\n"
+        label = "BROWSER VOICE SESSION" if c["mode"] == "browser" else "SIMULATED CALL"
+        txt = f"RELAY VOICE — {label}\nCall: {c['id']}\nAgent: {c['agent_snapshot']['name']}\nOutcome: {c['outcome'] or 'In progress'}\n{c['summary']}\n\n"
         txt += "\n\n".join(f"{t['role'].upper()}: {t['text']}" for t in c["transcript"])
         return PlainTextResponse(
             private(txt),

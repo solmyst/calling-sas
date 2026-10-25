@@ -2,6 +2,7 @@ import {$,esc,title,date,icon,badge,api,toast,dialog} from './ui.js';
 import * as V from './views.js';
 import {editAgent,editContact,editWorkflow} from './forms.js';
 let data,page='overview',currentCall=null,selectedAgent='agent-sales',query='',filter='all',busy=false;
+let mediaStream=null,audioPlayer=null,lastAudio=null,audioContext=null,micPaused=false,sttSocket=null,processor=null,streamMuted=true,handledTurns=new Set();
 const find=(kind,id)=>data[kind].find(x=>x.id===id);
 async function refresh(){data=await api('/state');render()}
 function render(){
@@ -12,6 +13,62 @@ function render(){
 function navigate(next){if(location.hash==='#'+next){page=next;render()}else location.hash=next}
 window.addEventListener('hashchange',()=>{if(location.hash==='#main'){$('#main')?.focus();return}window.scrollTo(0,0);page=V.nav.some(x=>x[0]===location.hash.slice(1))?location.hash.slice(1):'overview';query='';filter='all';if(data)render()});
 async function safely(fn,button){if(button)button.disabled=true;try{await fn()}catch(e){toast(e.message)}finally{if(button)button.disabled=false}}
+function voiceStatus(message){const el=$('#voice-live-status');if(el)el.textContent=message}
+function audioFromBase64(value,type='audio/mpeg'){
+ const bytes=Uint8Array.from(atob(value),c=>c.charCodeAt(0));
+ return new Blob([bytes],{type});
+}
+async function playVoice(value,type='audio/mpeg'){
+ if(audioPlayer){audioPlayer.pause();audioPlayer=null}
+ lastAudio={value,type};
+ const url=URL.createObjectURL(audioFromBase64(value,type));
+ audioPlayer=new Audio(url);
+ audioPlayer.onended=()=>{URL.revokeObjectURL(url);audioPlayer=null;if(currentCall?.mode==='browser'&&currentCall.status==='in_progress'&&!micPaused){streamMuted=false;voiceStatus('Listening… just speak.')}else voiceStatus('Ready.')};
+ audioPlayer.onerror=()=>{URL.revokeObjectURL(url);audioPlayer=null;voiceStatus('Audio playback failed. The reply is still saved in the transcript.')};
+ try{voiceStatus('AI is speaking…');await audioPlayer.play()}catch{voiceStatus('Playback was blocked. Press Replay last AI reply.')}
+}
+async function playOpening(){
+ if(!currentCall||currentCall.mode!=='browser')return;
+ voiceStatus('Preparing the AI voice…');
+ const r=await api('/calls/'+currentCall.id+'/voice/opening','POST');
+ await playVoice(r.audio,r.content_type);
+}
+async function sendStreamingTurn(text){
+ if(busy||!text.trim())return;busy=true;streamMuted=true;voiceStatus('Thinking…');
+ try{const body=await api('/calls/'+currentCall.id+'/voice/respond','POST',{text});currentCall=body.call;await refresh();await playVoice(body.audio,body.content_type)}
+ catch(e){voiceStatus(e.message);toast(e.message);streamMuted=false}finally{busy=false}
+}
+function pcm16(input,inputRate){
+ const ratio=inputRate/16000,length=Math.floor(input.length/ratio),out=new Int16Array(length);
+ for(let i=0;i<length;i++){const start=Math.floor(i*ratio),end=Math.min(input.length,Math.floor((i+1)*ratio));let sum=0;for(let j=start;j<end;j++)sum+=input[j];const sample=Math.max(-1,Math.min(1,sum/Math.max(1,end-start)));out[i]=sample<0?sample*32768:sample*32767}
+ return out.buffer;
+}
+async function ensureStreaming(){
+ if(sttSocket?.readyState===WebSocket.OPEN)return;
+ const scheme=location.protocol==='https:'?'wss':'ws';sttSocket=new WebSocket(`${scheme}://${location.host}/api/calls/${currentCall.id}/voice/stream`);sttSocket.binaryType='arraybuffer';
+ sttSocket.onmessage=e=>{const msg=JSON.parse(e.data);if(msg.type!=='Turn')return;const text=(msg.transcript||'').trim();if(text&&!msg.end_of_turn)voiceStatus('Hearing: '+text);if(msg.end_of_turn&&text){const key=String(msg.turn_order??text);if(handledTurns.has(key))return;handledTurns.add(key);sendStreamingTurn(text)}};
+ sttSocket.onerror=()=>voiceStatus('Realtime transcription disconnected. End and restart the session.');
+ await new Promise((resolve,reject)=>{sttSocket.onopen=resolve;sttSocket.onclose=()=>reject(new Error('Realtime transcription could not connect.'))});
+ processor=audioContext.createScriptProcessor(2048,1,1);const source=audioContext.createMediaStreamSource(mediaStream);const silent=audioContext.createGain();silent.gain.value=0;source.connect(processor);processor.connect(silent);silent.connect(audioContext.destination);
+ processor.onaudioprocess=e=>{if(!streamMuted&&!micPaused&&sttSocket?.readyState===WebSocket.OPEN)sttSocket.send(pcm16(e.inputBuffer.getChannelData(0),audioContext.sampleRate))};
+}
+async function ensureMicrophone(){
+ if(!navigator.mediaDevices?.getUserMedia||!window.AudioContext)throw new Error('This browser does not support realtime microphone audio.');
+ if(!mediaStream)mediaStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+ if(!audioContext)audioContext=new AudioContext();
+ await audioContext.resume();
+}
+async function beginListening(){
+ if(micPaused||audioPlayer||!currentCall)return;
+ await ensureMicrophone();await ensureStreaming();streamMuted=false;voiceStatus('Listening… just speak.');
+}
+async function toggleVoice(){
+ micPaused=!micPaused;
+ if(micPaused){streamMuted=true;voiceStatus('Microphone paused.');return}
+ await beginListening();
+}
+async function startVoiceSession(){micPaused=false;streamMuted=true;handledTurns.clear();await ensureMicrophone();await ensureStreaming();await playOpening();
+}
 function search(input,type){const pos=input.selectionStart;query=input.value;render();const el=$('#'+type+'-search');el.focus();el.setSelectionRange(pos,pos)}
 function bind(){
  document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>safely(()=>action(b.dataset.action),b));
@@ -36,9 +93,11 @@ async function action(name){
  if(name==='new-workflow')return editWorkflow(null,data,refresh);
  if(name==='start-call'){
   if(busy||currentCall?.status==='in_progress')return;busy=true;
-  try{selectedAgent=$('#studio-agent').value;currentCall=await api('/calls','POST',{agent_id:selectedAgent,contact_id:$('#studio-contact').value,mode:'demo',request_id:crypto.randomUUID()});await refresh()}finally{busy=false}
+  try{const mode=$('#studio-mode').value;selectedAgent=$('#studio-agent').value;currentCall=await api('/calls','POST',{agent_id:selectedAgent,contact_id:$('#studio-contact').value,mode,request_id:crypto.randomUUID()});await refresh();if(mode==='browser')await startVoiceSession()}finally{busy=false}
  }
- if(name==='end-call'&&currentCall){currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();toast('Simulation ended')}
+ if(name==='toggle-voice')return toggleVoice();
+ if(name==='replay-opening'){if(lastAudio)return playVoice(lastAudio.value,lastAudio.type);return playOpening()}
+ if(name==='end-call'&&currentCall){micPaused=true;streamMuted=true;if(sttSocket)sttSocket.close();sttSocket=null;if(processor)processor.disconnect();processor=null;if(audioPlayer)audioPlayer.pause();mediaStream?.getTracks().forEach(t=>t.stop());mediaStream=null;if(audioContext)await audioContext.close();audioContext=null;currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();toast('Conversation ended')}
  if(name==='logout'){await api('/logout','POST');currentCall=null;data=null;await init()}
 }
 async function reply(text){

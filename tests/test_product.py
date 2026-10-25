@@ -80,7 +80,11 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(a["id"], b["id"])
 
     def test_consent_and_validation(self):
-        self.assertEqual(self.start(contact_id="contact-6").status_code, 409)
+        contact = self.client.post("/api/contacts", json={
+            "name": "Consent pending", "phone": "+919999999999",
+            "segment": "Browser demo", "consent": False
+        }).json()
+        self.assertEqual(self.start(contact_id=contact["id"]).status_code, 409)
         self.assertEqual(self.start(agent_id="missing").status_code, 404)
         self.assertEqual(
             self.client.post("/api/contacts", json={"name": ""}).status_code, 422
@@ -99,9 +103,13 @@ class ProductTests(unittest.TestCase):
         )
 
     def test_workflow_idempotency(self):
+        workflow = self.client.post("/api/workflows", json={
+            "name": "Browser demo follow-up", "agent_id": "agent-sales",
+            "segment": "Browser demo", "action": "Create follow-up task"
+        }).json()
         body = {"request_id": "workflow-test"}
-        a = self.client.post("/api/workflows/workflow-1/run", json=body)
-        b = self.client.post("/api/workflows/workflow-1/run", json=body)
+        a = self.client.post(f"/api/workflows/{workflow['id']}/run", json=body)
+        b = self.client.post(f"/api/workflows/{workflow['id']}/run", json=body)
         self.assertEqual(a.status_code, 200, a.text)
         self.assertEqual(a.json(), b.json())
         self.assertGreater(a.json()["created"], 0)

@@ -1,7 +1,7 @@
 # Verification report — 2026-10-25
 
 ## Automated checks passed
-`python -m unittest discover -s tests -v`: **17 tests passed** against temporary databases, without external services.
+`python -m unittest discover -s tests -v`: **22 tests passed**. Tests use temporary databases and mocked provider boundaries.
 
 Covered: complete simulated qualification flow; persistent metrics/history; configuration snapshots; invalid input; missing agent; consent rejection; opt-out suppression; unconditional real-call rejection; duplicate start/turn/workflow requests; terminal-state protection; transcript redaction/export; cancellation; host and cross-origin write rejection; hosted configuration fail-closed; password sign-in, HttpOnly session cookie and logout; persistence across application recreation; negative confirmation; original voicemail detection vs a real person asking for a callback.
 
@@ -21,6 +21,7 @@ Used the Codex in-app browser and Chrome against the loopback server:
 - After restarting the server, existing calls and edits remained available.
 - Selected Casey instead of the default contact; the selection remained correct during the call. Voicemail response completed as `no_answer`, not a qualified lead or handoff.
 - Browser console returned no warnings/errors during the initial complete conversation test.
+- Browser voice mode rendered as available from live server configuration. Starting it created a separate `browser` session, generated and played the ElevenLabs opening, displayed push-to-talk controls, and left telephone mode disabled. Browser console returned no warnings or errors. Microphone capture was not exercised by automation because granting microphone permission and supplying a human utterance require the operator.
 - Overview had no document-level horizontal overflow at 320, 768, 1024 and 1440 CSS pixels after the mobile fix. Call studio also fit at 320px. Tables intentionally scroll inside their containers. This is not a full accessibility certification or every-page/device matrix.
 
 ## Issues found and fixed
@@ -33,5 +34,9 @@ Used the Codex in-app browser and Chrome against the loopback server:
 ## Original-project integrity
 `docs/original-integrity.json` records a before/after SHA-256 comparison of **38,646 files** (including existing nested artifacts; Git metadata, named venv/cache directories excluded). **0 changed, 0 missing.** Application/test source inventory contains 84 Python files after excluding hidden/vendor directories. No original project commands, live calls, messaging, deployment scripts or provider probes were executed.
 
+## Provider verification
+
+A synthetic provider round trip used the user-authorized private configuration without printing credential values: ElevenLabs returned a 52,287-byte MP3; AssemblyAI transcribed the synthetic sentence; Bifrost returned a contextual 97-character reply. This proves account authentication and the request formats used by this implementation. It does not establish physical microphone quality, conversational latency under representative use, provider capacity, billing economics or telephone audio quality.
+
 ## Boundaries not validated
-Original Pipecat runtime execution, speech recognition, model generation, live audio streaming, Exotel/CallerDesk/Asterisk connectivity, real call quality, billing, multitenancy, load/concurrency beyond SQLite transactions, production security, VM systemd/Caddy startup and Docker build/runtime. These are explicit next-stage work, not implied by passing the local demo tests.
+Physical microphone permission/audio, streaming barge-in, original Pipecat runtime execution, Exotel/CallerDesk/Asterisk connectivity, telephone call quality, billing, multitenancy, load/concurrency beyond SQLite transactions, production security, VM systemd/Caddy startup and Docker build/runtime. These are explicit next-stage work, not implied by passing the browser demo checks.
