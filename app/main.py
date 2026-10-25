@@ -205,7 +205,9 @@ def create_app(db_path=None, voice_engine=None):
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
-        if request.url.hostname not in hosts:
+        if request.url.hostname not in hosts and not (
+            request.method in ("GET", "HEAD") and request.url.path == "/health"
+        ):
             return JSONResponse({"detail": "Unrecognized host"}, status_code=400)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             if (

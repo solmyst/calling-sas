@@ -13,6 +13,25 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 create_app()
 
+    def test_hosted_health_ignores_probe_host(self):
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            patch.dict(
+                os.environ,
+                {
+                    "APP_ENV": "production",
+                    "DEMO_PASSWORD": "fictional-test-password-only",
+                    "SESSION_SECRET": "test-secret-value-with-at-least-32-characters",
+                    "PUBLIC_ORIGIN": "https://calling.example.com",
+                },
+            ),
+        ):
+            with TestClient(
+                create_app(temp + "/db.sqlite"), base_url="http://127.0.0.1"
+            ) as c:
+                self.assertEqual(c.get("/health").status_code, 200)
+                self.assertEqual(c.get("/api/session").status_code, 400)
+
     def test_authentication_cookie_and_logout(self):
         with (
             tempfile.TemporaryDirectory() as temp,
