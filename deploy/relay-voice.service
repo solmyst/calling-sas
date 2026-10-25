@@ -1,0 +1,25 @@
+[Unit]
+Description=Relay Voice demo workspace
+After=network.target
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+WorkingDirectory=/opt/relay-voice
+EnvironmentFile=/etc/relay-voice.env
+ExecStart=/opt/relay-voice/.venv/bin/python run.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/relay-voice
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

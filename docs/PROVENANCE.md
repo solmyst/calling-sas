@@ -12,3 +12,9 @@ No third-party license rights are expanded by that confirmation. The original ma
 These two files are exact, unmodified copies. No secrets or external service calls were found in them. The remainder of this product is newly authored code and synthetic demo content.
 
 Dependencies are pinned in requirements.lock. Review and preserve each dependency’s distribution license before commercial redistribution. No blanket open-source license is assigned to owner code by this delivery.
+
+## Adapted reuse: voicemail detection
+
+`app/reused/voicemail.py` extracts `_VOICEMAIL_RE` and `is_voicemail_announcement` from original `guard_core.py`. AST-based extraction preserves executable behavior while dropping company incident comments/docstrings. No company endpoint or data dependency remains. This detector actively prevents a simulated recorded greeting from becoming a qualified/handoff outcome.
+
+Original module SHA-256: `f8d02352d0af62229461654ef55b123a7b096e41021fa5944674901e25a72821`.

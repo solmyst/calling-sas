@@ -32,7 +32,7 @@ Source supports full voice conversations, interruption handling, deterministic g
 No general SaaS control plane, tenant isolation, customer-facing configuration model, product-wide durable call store, self-service onboarding or billing was found in the inspected runtime. Many shared imports still refer directly to insurance link delivery and internal data. Filesystem locks/CSV and one-call-per-process trace assumptions need a durable queue and concurrency design. Existing prompts/guards can suppress AI disclosure; the new demo explicitly identifies the assistant. No real-data copy or company service dependency is necessary for the local pitch.
 
 ## Reuse strategy
-1. Active now: exact privacy redactor; synthetic data only; tests verify its use in stored turns.
+1. Active now: exact privacy redactor and extracted voicemail detection from guard_core.py; synthetic data only; tests verify redaction and machine-greeting classification.
 2. Preserved now: exact voice gate in `optional/voice/`, excluded from web startup dependencies.
 3. Preserve architectural investment: keep the STT→LLM→TTS worker separate from the SaaS control plane. Extract provider failover, guards and lifecycle into that worker after product requirements and live test accounts are available. See `ARCHITECTURE.md` for the boundary.
 4. Do not copy the monolithic bot and pretend it is portable. Company actions must become injected adapters, internal gateway defaults must be removed, traces must become call-scoped, model availability must be validated, and third-party notices retained.

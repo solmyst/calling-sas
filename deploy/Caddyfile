@@ -1,0 +1,13 @@
+# Set RELAY_DOMAIN to your approved hostname in Caddy's service environment.
+{$RELAY_DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 64KB
+    }
+    reverse_proxy 127.0.0.1:8787
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        -Server
+    }
+}

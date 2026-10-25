@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import Protocol
 from .reused.redaction import redact
+from .reused.voicemail import is_voicemail_announcement
 
 USE_CASES = (
     "lead_qualification",
@@ -76,6 +77,9 @@ class DemoProvider:
         ):
             reply = "Understood. I have marked this demo contact as do not call. Thank you for your time."
             outcome = "opted_out"
+        elif is_voicemail_announcement(text):
+            reply = "An automated greeting was detected in this simulation. The conversation is closed without qualifying this contact."
+            outcome = "no_answer"
         elif re.search(r"\bhuman\b|\bperson\b|\bmanager\b|\bescalate\b", t):
             reply = "Of course. I have recorded a handoff request for your team in this demo. A real transfer is not connected."
             outcome = "handoff"
@@ -118,6 +122,7 @@ class DemoProvider:
                 f"Simulated {agent['use_case'].replace('_', ' ')} conversation. Outcome: {outcome.replace('_', ' ')}."
             )
             call["next_action"] = {
+                "no_answer": "Review unanswered contact",
                 "qualified": "Arrange a discovery meeting",
                 "confirmed": "Review appointment confirmation",
                 "handoff": "Assign a human owner",
