@@ -77,6 +77,8 @@ class VoiceTests(unittest.TestCase):
             config = VoiceConfig.from_env()
         self.assertEqual(config.bifrost_url, "https://bifrost.parkplus.io/v1")
         self.assertEqual(config.elevenlabs_model, "eleven_flash_v2_5")
+        self.assertEqual(config.elevenlabs_voice, "EXAVITQu4vr4xnSDxMaL")
+        self.assertNotEqual(config.elevenlabs_voice, "21m00Tcm4TlvDq8ikWAM")
 
     def test_provider_requests_use_bifrost_and_elevenlabs_server_side(self):
         seen = []
