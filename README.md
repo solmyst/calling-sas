@@ -2,7 +2,7 @@
 
 **A separate, local AI calling product demo built from an audited voice-system foundation.**
 
-Configure agents, manage contacts, hold browser voice conversations, rehearse scripted flows, review transcripts, and see the next step. The dashboard uses a real API and SQLite persistence. Gnani Prisma/Timbre provides streaming speech with Bifrost for conversation; the former AssemblyAI/ElevenLabs path remains configurable. Telephone dialing remains unavailable. See [Gnani setup, scripts and validation](docs/GNANI-DEMO.md).
+Configure agents, manage contacts, hold browser voice conversations, rehearse scripted flows, review transcripts, and see the next step. The dashboard uses a real API and SQLite persistence. Gnani Prisma/Timbre provides streaming speech with Bifrost for conversation; the former AssemblyAI/ElevenLabs path remains configurable. Telephone dialing remains unavailable. See [Gnani setup](docs/GNANI-DEMO.md) and [automatic interruption and session memory](docs/BARGE-IN-MEMORY.md).
 
 The browser runtime supports English, Hindi and Hinglish. Demo experiences includes sales, a business helper, customer care and appointment intake. Each has its own instructions and business context.
 
@@ -54,7 +54,7 @@ The current local `.env` has been configured from the provider credentials the u
 
 1. Open **Demo experiences** and choose a scenario relevant to the prospect.
 2. Customize the agent's business facts, language, delivery and opening.
-3. In **Call studio**, choose Live browser voice, start, approve microphone access and speak after the opening. Gnani detects speech boundaries automatically. Interrupt AI stops playback when you want to speak.
+3. In **Call studio**, choose Live browser voice, start and approve microphone access. Speak at any time to interrupt; Silero stops the AI, Gnani recognizes your words, and session memory preserves details and corrections.
 4. Try an unexpected question or correct an appointment preference. End the session and review the saved transcript and follow-up request together.
 5. Explain the next step honestly: a booking request needs availability verification; a handoff needs a person. No external action is executed.
 6. Agree on one pilot workflow and a measurable outcome. History and analytics reflect actual stored browser sessions and labelled typed simulations, not fabricated sales results.

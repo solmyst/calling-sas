@@ -14,6 +14,7 @@ from .store import Store
 from .engine import DemoProvider, LiveCallingDisabled, now, private
 from .seed import seed
 from .voice import VoiceConfigurationError, VoiceEngine, VoiceProviderError
+from .memory import update_memory
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env", override=False)
@@ -91,6 +92,13 @@ class Turn(Model):
 
 class VoiceText(Model):
     text: str = Field(min_length=1, max_length=2000)
+    request_id: str = Field(default_factory=lambda: uuid.uuid4().hex, min_length=1, max_length=100)
+
+
+class Interrupt(Model):
+    request_id: str = Field(min_length=1, max_length=100)
+    played_ms: int = Field(default=0, ge=0, le=900000)
+    customer_text: str = Field(default="", max_length=2000)
 
 
 class Run(Model):
@@ -154,7 +162,7 @@ def metrics(calls):
     )
 
 
-def create_app(db_path=None, voice_engine=None):
+def create_app(db_path=None, voice_engine=None, vad_factory=None):
     environment = os.getenv("APP_ENV", "local")
     password = os.getenv("DEMO_PASSWORD", "")
     secret = os.getenv("SESSION_SECRET", "") or secrets.token_hex(32)
@@ -200,6 +208,7 @@ def create_app(db_path=None, voice_engine=None):
     app.state.store = store
     attempts = defaultdict(deque)
     responding = set()
+    active_responses = {}
 
     async def speak_for_call(text, call):
         if hasattr(voice, "speech_chunks"):
@@ -325,6 +334,9 @@ def create_app(db_path=None, voice_engine=None):
             "ai_connected": voice.ready,
             "voice_providers": voice.providers,
             "streaming_audio": hasattr(voice, "speech_chunks"),
+            "automatic_barge_in": True,
+            "vad": "Silero v5",
+            "memory_scope": "conversation",
             "workspace": "Relay Voice workspace",
             "authentication": bool(password),
             "version": "0.2.0",
@@ -392,6 +404,9 @@ def create_app(db_path=None, voice_engine=None):
             next_action="",
             workflow_id=wid,
         )
+        if mode == "browser":
+            call["transcript"][0]["response_id"] = "opening:" + call["id"]
+        update_memory(call)
         Store.put(db, "calls", call)
         return call
 
@@ -472,6 +487,7 @@ def create_app(db_path=None, voice_engine=None):
         try:
             customer_text = private(await voice.transcribe(audio, content_type))
             c["transcript"].append({"role": "customer", "text": customer_text, "at": now()})
+            update_memory(c)
             assistant_text = private(await voice.reply(c))
             generated_audio = await speak_for_call(assistant_text, c)
         except (VoiceConfigurationError, VoiceProviderError, ValueError) as e:
@@ -482,6 +498,7 @@ def create_app(db_path=None, voice_engine=None):
             if latest["status"] != "in_progress":
                 raise HTTPException(409, "This browser voice session has ended.")
             latest["transcript"] = c["transcript"]
+            update_memory(latest)
             Store.put(db, "calls", latest)
         return {
             "call": latest,
@@ -507,6 +524,8 @@ def create_app(db_path=None, voice_engine=None):
             return
         try:
             voice.require_ready()
+            from .vad import SileroVad
+            vad = await asyncio.to_thread(vad_factory or SileroVad)
             await websocket.accept()
             async with websocket_connect(
                 voice.streaming_stt_url_for(c["agent_snapshot"].get("language", "English")),
@@ -514,13 +533,32 @@ def create_app(db_path=None, voice_engine=None):
                 compression=None,
                 open_timeout=10,
             ) as upstream:
+                playback = False
+                send_lock = asyncio.Lock()
+
+                async def send_event(event):
+                    async with send_lock:
+                        await websocket.send_json(event)
+
                 async def send_audio():
+                    nonlocal playback
                     try:
                         while True:
-                            chunk = await websocket.receive_bytes()
+                            incoming = await websocket.receive()
+                            if incoming["type"] == "websocket.disconnect":
+                                break
+                            if incoming.get("text"):
+                                control = json.loads(incoming["text"])
+                                if control.get("type") == "playback":
+                                    playback = bool(control.get("active"))
+                                continue
+                            chunk = incoming.get("bytes")
                             if chunk:
-                                if hasattr(voice, "speech_chunks") and len(chunk) != 1024:
+                                if len(chunk) != 1024:
                                     raise VoiceProviderError("Invalid microphone frame size.")
+                                event = await asyncio.to_thread(vad.process, chunk, playback)
+                                if event:
+                                    await send_event(event)
                                 await upstream.send(chunk)
                     except WebSocketDisconnect:
                         try:
@@ -533,7 +571,7 @@ def create_app(db_path=None, voice_engine=None):
                     async for message in upstream:
                         event = voice.stream_event(message)
                         if event:
-                            await websocket.send_json(event)
+                            await send_event(event)
 
                 tasks = [asyncio.create_task(send_audio()), asyncio.create_task(send_transcripts())]
                 done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -548,6 +586,34 @@ def create_app(db_path=None, voice_engine=None):
                 await websocket.close(code=1011)
             except Exception:
                 pass
+
+    @app.post("/api/calls/{id}/voice/interrupt")
+    async def interrupt_voice(id: str, body: Interrupt):
+        with store.transaction() as db:
+            c = require(db, "calls", id)
+            if c["mode"] != "browser":
+                raise HTTPException(409, "This is not a browser voice session.")
+            cancelled = c.get("cancelled_response_ids", [])
+            if body.request_id not in cancelled:
+                c["cancelled_response_ids"] = (cancelled + [body.request_id])[-32:]
+            if body.customer_text and not body.request_id.startswith("opening:") and not any(
+                t.get("response_id") == body.request_id and t["role"] == "customer" for t in c["transcript"]
+            ):
+                c["transcript"].append({"role": "customer", "text": private(body.customer_text), "at": now(), "response_id": body.request_id})
+                update_memory(c)
+            for turn in c["transcript"]:
+                if turn.get("response_id") == body.request_id and turn["role"] == "agent":
+                    turn.update(delivery_status="interrupted", played_ms=body.played_ms)
+            c["interruptions"] = len(c.get("cancelled_response_ids", []))
+            Store.put(db, "calls", c)
+        active = active_responses.get(id)
+        if active and active["request_id"] == body.request_id:
+            active["interrupted"] = True
+            active_responses.pop(id, None)
+            responding.discard(id)
+            if active["task"]:
+                active["task"].cancel()
+        return {"interrupted": True, "request_id": body.request_id}
 
     @app.post("/api/calls/{id}/voice/respond/stream")
     async def voice_respond_stream(id: str, body: VoiceText):
@@ -565,22 +631,35 @@ def create_app(db_path=None, voice_engine=None):
             raise HTTPException(409, "This session is already preparing a response.")
         if len(c["transcript"]) >= 61:
             raise HTTPException(409, "Session turn limit reached. Please start a new conversation.")
+        if body.request_id in c.get("cancelled_response_ids", []) or any(
+            t.get("response_id") == body.request_id for t in c["transcript"]
+        ):
+            raise HTTPException(409, "This response was already processed or interrupted.")
         responding.add(id)
+        active = {"request_id": body.request_id, "task": None, "interrupted": False}
+        active_responses[id] = active
 
         async def events():
             started = time.perf_counter()
             def event(value):
                 return json.dumps(value, ensure_ascii=False) + "\n"
             try:
+                active["task"] = asyncio.current_task()
+                if active["interrupted"]:
+                    return
                 with store.transaction() as db:
                     latest = require(db, "calls", id)
                     if latest["status"] != "in_progress":
                         raise VoiceProviderError("This browser voice session has ended.")
-                    c["transcript"] = latest["transcript"] + [{"role": "customer", "text": private(body.text), "at": now()}]
+                    if body.request_id in latest.get("cancelled_response_ids", []):
+                        return
+                    c.update(latest)
+                    c["transcript"] = latest["transcript"] + [{"role": "customer", "text": private(body.text), "at": now(), "response_id": body.request_id}]
+                    update_memory(c)
                     Store.put(db, "calls", c)
                 answer = private(await voice.reply(c))
                 model_ms = round((time.perf_counter() - started) * 1000)
-                c["transcript"].append({"role": "agent", "text": answer, "at": now(), "delivery_status": "generated"})
+                c["transcript"].append({"role": "agent", "text": answer, "at": now(), "delivery_status": "generated", "response_id": body.request_id})
                 # Persist generated text before audio delivery. Provider/playback
                 # failure must not erase the customer's input or the answer.
                 with store.transaction() as db:
@@ -588,8 +667,9 @@ def create_app(db_path=None, voice_engine=None):
                     if latest["status"] != "in_progress":
                         raise VoiceProviderError("This browser voice session has ended.")
                     latest["transcript"] = c["transcript"]
+                    update_memory(latest)
                     Store.put(db, "calls", latest)
-                yield event({"type": "reply", "call": latest, "llm_ms": model_ms})
+                yield event({"type": "reply", "call": latest, "llm_ms": model_ms, "response_id": body.request_id})
                 first_audio_ms = None
                 async for chunk in voice.speech_chunks(answer, c["agent_snapshot"].get("language", "English"), c["agent_snapshot"].get("delivery", "warm")):
                     if first_audio_ms is None:
@@ -609,7 +689,9 @@ def create_app(db_path=None, voice_engine=None):
             except Exception:
                 yield event({"type": "error", "message": "Voice response failed. Your saved transcript is available; retry or restart the session."})
             finally:
-                responding.discard(id)
+                if active_responses.get(id) is active:
+                    active_responses.pop(id, None)
+                    responding.discard(id)
         return StreamingResponse(events(), media_type="application/x-ndjson",
                                  headers={"X-Accel-Buffering": "no"})
 
@@ -622,6 +704,7 @@ def create_app(db_path=None, voice_engine=None):
         try:
             customer_text = private(body.text)
             c["transcript"].append({"role": "customer", "text": customer_text, "at": now()})
+            update_memory(c)
             assistant_text = private(await voice.reply(c))
             generated_audio = await speak_for_call(assistant_text, c)
         except (VoiceConfigurationError, VoiceProviderError, ValueError) as e:
@@ -632,6 +715,7 @@ def create_app(db_path=None, voice_engine=None):
             if latest["status"] != "in_progress":
                 raise HTTPException(409, "This browser voice session has ended.")
             latest["transcript"] = c["transcript"]
+            update_memory(latest)
             Store.put(db, "calls", latest)
         return {"call": latest, "transcript": customer_text, "reply": assistant_text,
                 "audio": base64.b64encode(generated_audio).decode(), "content_type": getattr(voice, "audio_content_type", "audio/mpeg")}
@@ -656,6 +740,7 @@ def create_app(db_path=None, voice_engine=None):
                     409, "Demo turn limit reached. End this call and start another."
                 )
             provider.turn(c, body.text)
+            update_memory(c)
             finish(db, c)
             Store.cache(db, key, c)
             return c

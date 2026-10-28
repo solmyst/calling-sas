@@ -81,11 +81,11 @@ before enabling it for a customer demonstration.
    NDJSON; the browser schedules audio immediately without waiting for the full file.
 5. Session history stores generated text and measured model/first-audio/total server
    timings. Generated text does not prove the whole sentence was heard. The browser
-   can interrupt/cancel playback; automatic acoustic barge-in is not implemented.
+   interrupts automatically when Silero confirms user speech. See [barge-in and memory](BARGE-IN-MEMORY.md).
 
 Microphone permission is required. Hosted demos need HTTPS. Avoid loud speakers
-next to the mic; headphones make the demonstration more reliable. Speech is muted
-during AI playback until the user chooses Interrupt AI or the reply finishes.
+next to the mic; headphones make the demonstration more reliable. The microphone
+remains active during playback so you can interrupt naturally.
 Replay is available for the opening/full-file legacy audio; streamed reply replay
 is a future improvement. Gnani's STT sessions have a documented fifteen-minute limit.
 
@@ -122,8 +122,8 @@ the same machine/network and representative utterances.
 - [Gnani audio tags](https://docs.gnani.ai/api/TTS/tts-audio-tags): expression belongs in synthesis input and is model-specific.
 - [LiveKit turn-taking guidance](https://docs.livekit.io/agents/logic/turns/tuning/): endpointing, interruptions, false-interruption recovery and background noise are separate concerns.
 
-Next priorities: benchmark voice candidates with your own audience; validate
-automatic barge-in with echo/noise handling; stream the LLM sentence by sentence;
+Next priorities: benchmark voice candidates and physical-room barge-in with your
+own audience; stream the LLM sentence by sentence;
 add actual calendar/CRM tools with confirmation; add per-workspace rate limits,
 usage billing and tenant isolation before opening a public voice playground.
 

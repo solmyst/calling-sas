@@ -53,8 +53,8 @@ playback can begin with the first chunk.
 Microphone permission and selected audio device, echo from speakers, real accents,
 background noise, extended Hinglish switching, and perceived prosody must be checked
 with a person in a real browser. Synthetic audio passing STT is not proof those
-conditions work. Automatic acoustic barge-in is not implemented; Interrupt AI is an
-explicit playback control. Normal turns remain hands-free after the AI finishes.
+conditions work. This baseline predates automatic interruption; see the updated
+[Silero barge-in and memory validation](BARGE-IN-MEMORY.md).
 Generated transcript text is not proof that every word was heard during interruption.
 
 Test several Gnani voices and delivery settings before claiming a best voice.
