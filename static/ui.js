@@ -1,4 +1,5 @@
 export const $=(s,root=document)=>root.querySelector(s);
+export const basePath=location.pathname.replace(/\/$/,'');
 export const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const title=s=>(s||'').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
 export const initials=s=>(s||'?').split(' ').map(x=>x[0]).slice(0,2).join('');
@@ -14,7 +15,7 @@ export function chart(days){
  return `<svg class="chart" viewBox="0 0 650 180" role="img" aria-label="Simulated call volume over the last seven days">${[0,1,2,3].map(i=>`<line x1="32" x2="640" y1="${20+i*42}" y2="${20+i*42}" class="gridline"/><text x="5" y="${24+i*42}">${Math.round(max*(1-i/3))}</text>`).join('')}${days.map((d,i)=>{const x=50+i*85,h=d.calls/max*125,s=d.successful/max*125;return `<rect x="${x}" y="${146-h}" width="32" height="${h}" rx="5" class="bar-total"><title>${esc(d.label)}: ${d.calls} calls</title></rect><rect x="${x+35}" y="${146-s}" width="13" height="${s}" rx="4" class="bar-success"/><text x="${x+22}" y="172" text-anchor="middle">${esc(d.label)}</text>`}).join('')}</svg>`;
 }
 export async function api(path,method='GET',body){
- const r=await fetch('/api'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+ const r=await fetch(basePath+'/api'+path,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
  const data=await r.json();if(!r.ok)throw new Error(Array.isArray(data.detail)?data.detail.map(x=>`${x.loc.at(-1)}: ${x.msg}`).join('; '):data.detail||'Request failed');return data;
 }
 export function toast(text){const el=$('#toast');el.textContent=text;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),4500)}
