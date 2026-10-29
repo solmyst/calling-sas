@@ -162,7 +162,7 @@ def metrics(calls):
     )
 
 
-def create_app(db_path=None, voice_engine=None, vad_factory=None):
+def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extractor=None):
     environment = os.getenv("APP_ENV", "local")
     password = os.getenv("DEMO_PASSWORD", "")
     secret = os.getenv("SESSION_SECRET", "") or secrets.token_hex(32)
@@ -836,5 +836,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None):
     def index():
         return FileResponse(ROOT / "static/index.html")
 
+    from .requests import router as request_router
+    app.include_router(request_router(store, request_extractor or getattr(voice, "extract_request", None)))
     app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
     return app
