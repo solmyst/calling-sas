@@ -38,6 +38,11 @@ try{
  await page.goto(origin+'/#studio');
  await page.locator('#studio-agent').selectOption('demo-booking');
  await page.getByRole('button',{name:'Start conversation'}).click();
+ await page.getByRole('button',{name:'End session',exact:true}).click();
+ await page.getByRole('button',{name:/View full details/}).waitFor();
+ await page.waitForLoadState('networkidle');
+ assert.equal(await page.locator('#modal').isVisible(),false,'Ending a session must not open conversation details');
+ await page.getByRole('button',{name:'Start conversation'}).click();
  for(const text of ['Routine car service, this Friday at eleven please.','Actually, Saturday at two instead.','Yes, please proceed.']){
   await page.getByRole('textbox',{name:'Customer response'}).fill(text);
   await Promise.all([page.waitForResponse(r=>r.url().endsWith('/turn')&&r.request().method()==='POST'),page.getByRole('button',{name:'Send',exact:true}).click()]);
@@ -78,7 +83,7 @@ try{
  const overflow=await page.locator('#modal').evaluate(el=>({width:el.clientWidth,scroll:el.scrollWidth}));
  assert.ok(overflow.scroll<=overflow.width+1,'No horizontal modal overflow on mobile');
  assert.deepEqual(errors,[]);
- const report={passed:true,live_model_extraction:live,workflow_create_edit:true,review_followup_reload:true,mobile_no_horizontal_overflow:true,page_errors:errors,scope:'Temporary database; no external actions or phone calls'};
+ const report={passed:true,live_model_extraction:live,workflow_create_edit:true,end_session_no_popup:true,review_followup_reload:true,mobile_no_horizontal_overflow:true,page_errors:errors,scope:'Temporary database; no external actions or phone calls'};
  writeFileSync(path.join(output,'report.json'),JSON.stringify(report,null,2));
  console.log(JSON.stringify(report));
 }finally{

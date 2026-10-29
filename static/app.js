@@ -50,7 +50,7 @@ async function action(name){
  }
  if(name==='toggle-voice')return liveVoice.toggle();
  if(name==='replay-opening')return liveVoice.replayOpening();
- if(name==='end-call'&&currentCall){await liveVoice.close();currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();toast('Conversation ended');await showCall(currentCall.id)}
+ if(name==='end-call'&&currentCall){await liveVoice.close();currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();toast('Conversation ended')}
  if(name==='logout'){await liveVoice.close();await api('/logout','POST');currentCall=null;data=null;await init()}
 }
 async function reply(text){

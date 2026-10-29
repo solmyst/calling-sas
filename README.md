@@ -58,7 +58,7 @@ The current local `.env` has been configured from the provider credentials the u
 2. Customize the agent's business facts, language, delivery and opening.
 3. In **Call studio**, choose Live browser voice, start and approve microphone access. Speak at any time to interrupt; Silero stops the AI, Gnani recognizes your words, and session memory preserves details and corrections.
 4. Try an unexpected question or correct an appointment preference. End the session and review the saved transcript and follow-up request together.
-5. End the session to open Call Detail. Extract customer preferences, review the latest correction and unknowns, assign an owner, and save a local lead/follow-up. Calendar and CRM stay visibly disconnected; no external action is executed.
+5. Open Call Detail from Call history when you want to review a session. Extract customer preferences, review the latest correction and unknowns, assign an owner, and save a local lead/follow-up. Calendar and CRM stay visibly disconnected; no external action is executed.
 6. Agree on one pilot workflow and a measurable outcome. History and analytics reflect actual stored browser sessions and labelled typed simulations, not fabricated sales results.
 
 An in-progress conversation survives page/server restarts; open it from Call history and select Resume. The runtime database lives in `runtime/relay.sqlite` by default. Keep the entire `runtime` directory private. To start an independent fresh demo, set DATABASE_PATH to a new file; do not delete a database containing wanted work.

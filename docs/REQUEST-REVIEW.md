@@ -32,7 +32,7 @@ External actions remain disabled regardless of environment flags or submitted da
 ## Using the demo
 
 1. Run a browser voice conversation or a labelled typed simulation.
-2. End the voice session to open Call Detail, or open it from Call history.
+2. End the session to stay in Call studio. Open Call Detail from Call history when you want to review it.
 3. Select **Extract from transcript** for model suggestions, or enter the details.
    Evidence quotes show the original customer statement and transcript turn.
 4. Clarify or leave unknown fields blank. Assign a team/owner and select
@@ -62,7 +62,7 @@ The browser helper starts/stops its own loopback server on an available port and
 uses a temporary database, never the ordinary workspace or VM. It requires
 Google Chrome, or set `BROWSER_PATH` to a compatible installed Chromium binary.
 Screenshots/report are written under ignored `runtime/request-browser-check/`.
-The checked path covers workflow create/edit, correction extraction, manual
+The checked path covers workflow create/edit, no automatic popup on session end, correction extraction, manual
 review, deduplicated follow-up, reload persistence, mobile horizontal fit and
 page errors. It does not exercise physical microphone acoustics or phone calls.
 
