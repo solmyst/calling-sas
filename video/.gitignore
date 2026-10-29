@@ -1,0 +1,5 @@
+node_modules/
+public/capture/
+public/audio/
+public/manifest.json
+out/

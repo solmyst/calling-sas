@@ -8,6 +8,8 @@ The browser runtime supports English, Hindi and Hinglish. Demo experiences inclu
 
 ## Public site
 
+The 60-second hackathon film has a reproducible Remotion pipeline under [`video/`](video/README.md). It captures the real application in a separate fictional recording workspace and uses the configured Gnani/Bifrost providers. Render and review commands are documented there; generated media stays outside Git.
+
 The static product site is deployed from `site/` to [GitHub Pages](https://solmyst.github.io/calling-sas/). GitHub Pages cannot run FastAPI, SQLite, private API keys or realtime server WebSockets; use the deployment configuration in `deploy/` for the working voice application.
 
 ![Relay Voice dashboard](docs/dashboard.png)

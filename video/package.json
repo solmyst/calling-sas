@@ -1,0 +1,30 @@
+{
+  "name": "relay-voice-hackathon-video",
+  "private": true,
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "prepare:assets": "../.venv/bin/python scripts/prepare.py",
+    "capture": "node scripts/capture.mjs",
+    "render": "node scripts/render.mjs",
+    "review": "../.venv/bin/python scripts/review.py",
+    "build": "node scripts/build.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@remotion/bundler": "4.0.539",
+    "@remotion/cli": "4.0.539",
+    "@remotion/renderer": "4.0.539",
+    "playwright": "1.64.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.539"
+  },
+  "overrides": {
+    "zod": "4.6.7"
+  }
+}
