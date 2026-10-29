@@ -77,7 +77,7 @@ def grounded_fields(raw, call):
                 or quote not in turn['text'] or value.casefold() not in quote.casefold()):
             raise ValueError('Unsupported extracted value')
         values[key] = private(value)
-        evidence[key] = dict(quote=private(quote), turn_index=index)
+        evidence[key] = dict(quote=private(quote), statement=private(turn['text']), turn_index=index)
     return Fields.model_validate(values).model_dump(), evidence
 
 
@@ -120,8 +120,11 @@ def router(store, extractor):
             fields = {k:private(v) for k,v in body.fields.model_dump().items()}
             if not any(fields.values()):
                 raise HTTPException(422, 'Record at least one request detail.')
+            previous = request_state(call)
+            evidence = {key:item for key,item in previous.get('evidence', {}).items()
+                        if fields.get(key) == previous['fields'].get(key)}
             state = dict(fields=fields, owner=private(body.owner), notes=private(body.notes),
-                         status='reviewed', source='operator', evidence={})
+                         status='reviewed', source='operator', evidence=evidence)
             return save(db, call, state, 'Request reviewed')
 
     @api.post('/extract')

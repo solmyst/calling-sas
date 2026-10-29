@@ -1,6 +1,7 @@
 import {$,esc,title,date,icon,badge,api,toast,dialog,basePath} from './ui.js';
 import * as V from './views.js';
 import {VoiceSession} from './voice-session.js';
+import {mountRequestReview} from './request-review.js';
 import {editAgent,editContact,editWorkflow} from './forms.js';
 let data,page='overview',currentCall=null,selectedAgent='agent-sales',query='',filter='all',busy=false;
 const find=(kind,id)=>data[kind].find(x=>x.id===id);
@@ -49,7 +50,7 @@ async function action(name){
  }
  if(name==='toggle-voice')return liveVoice.toggle();
  if(name==='replay-opening')return liveVoice.replayOpening();
- if(name==='end-call'&&currentCall){await liveVoice.close();currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();toast('Conversation ended')}
+ if(name==='end-call'&&currentCall){await liveVoice.close();currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();toast('Conversation ended');await showCall(currentCall.id)}
  if(name==='logout'){await liveVoice.close();await api('/logout','POST');currentCall=null;data=null;await init()}
 }
 async function reply(text){
@@ -58,8 +59,10 @@ async function reply(text){
  try{currentCall=await api('/calls/'+currentCall.id+'/turn','POST',{text,request_id:crypto.randomUUID()});await refresh();if(currentCall.status==='completed')toast('Outcome saved. Your dashboard is up to date.')}finally{busy=false;render();$('#reply-form input')?.focus()}
 }
 async function showCall(id){
- const c=await api('/calls/'+id);
- const d=dialog(`<h2>Conversation details</h2><p class="subtitle">${esc(c.contact_snapshot.name)} with ${esc(c.agent_snapshot.name)} · ${date(c.started_at)}</p><div class="call-meta">${badge(c.mode==='browser'?'Browser voice':'Simulated')}${badge(c.source==='seed'?'Seeded example':c.source)}${badge(c.outcome||c.status,c.outcome||'')}</div><div class="call-summary"><strong>${esc(c.summary||'Conversation in progress.')}</strong><p>Next step: ${esc(c.next_action||'Continue the simulation')}</p></div><div class="transcript">${V.transcript(c)}</div><div class="actions"><a class="button" href="${basePath}/api/calls/${c.id}/export" download>${icon('download')}Export transcript</a> <button class="button" id="play-transcript">${icon('volume')}Listen locally</button>${c.status==='in_progress'?` <button class="button primary" id="resume-call">Resume</button>`:''}</div><p class="form-help" id="voice-status">Optional on-device browser voice. No recorded audio or live call.</p><details class="snapshot"><summary>Session memory · customer-provided notes</summary><ol>${(c.memory?.customer_notes||[]).map(n=>`<li>${esc(n.text)}</li>`).join('')||'<li>No customer details recorded yet.</li>'}</ol></details><details class="snapshot"><summary>Agent configuration at the time of this call</summary><pre>${esc('Use case: '+title(c.agent_snapshot.use_case)+'\n\nSystem prompt (stored, not interpreted in offline demo):\n'+c.agent_snapshot.prompt+'\n\nBusiness context:\n'+c.agent_snapshot.context)}</pre></details>`);
+ const [c,requestInfo]=await Promise.all([api('/calls/'+id),api('/calls/'+id+'/request')]);
+ const outcomeLabel=c.mode==='demo'&&c.outcome==='confirmed'?'Simulated confirmation':c.outcome||c.status;
+ const d=dialog(`<h2>Conversation details</h2><p class="subtitle">${esc(c.contact_snapshot.name)} with ${esc(c.agent_snapshot.name)} · ${date(c.started_at)}</p><div class="call-meta">${badge(c.mode==='browser'?'Browser voice':'Simulated')}${badge(c.source==='seed'?'Seeded example':c.source)}${badge(outcomeLabel,c.outcome||'')}</div><div class="call-summary"><strong>${esc(c.summary||'Conversation in progress.')}</strong><p>Next step: ${esc(c.next_action||'Continue the simulation')}</p></div><div id="request-review"></div><h3 class="section-space">Conversation transcript</h3><div class="transcript">${V.transcript(c)}</div><div class="actions"><a class="button" href="${basePath}/api/calls/${c.id}/export" download>${icon('download')}Export transcript</a> <button class="button" id="play-transcript">${icon('volume')}Listen locally</button>${c.status==='in_progress'?` <button class="button primary" id="resume-call">Resume</button>`:''}</div><p class="form-help" id="voice-status">Optional on-device browser voice. No recorded audio or live call.</p><details class="snapshot"><summary>Session memory · customer-provided notes</summary><ol>${(c.memory?.customer_notes||[]).map(n=>`<li>${esc(n.text)}</li>`).join('')||'<li>No customer details recorded yet.</li>'}</ol></details><details class="snapshot"><summary>Agent configuration at the time of this call</summary><pre>${esc('Use case: '+title(c.agent_snapshot.use_case)+'\n\nSystem prompt (stored, not interpreted in offline demo):\n'+c.agent_snapshot.prompt+'\n\nBusiness context:\n'+c.agent_snapshot.context)}</pre></details>`);
+ mountRequestReview($('#request-review',d),c,requestInfo,api,()=>{refresh().catch(e=>toast(e.message));});
  if($('#resume-call',d))$('#resume-call',d).onclick=()=>safely(async()=>{await liveVoice.close();currentCall=c;selectedAgent=c.agent_id;d.close();navigate('studio');if(c.mode==='browser')await liveVoice.start(c,data.settings,true);});
  let speaking=false;
  $('#play-transcript',d).onclick=()=>{

@@ -80,6 +80,37 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(self.client.put(f"/api/calls/{other['id']}/request",json={'revision':0,'fields':{'service':'Repair'}}).status_code,409)
         self.assertEqual(self.client.put(self.url,json={'revision':0,'fields':{'service':'Repair','timezone':'made-up'}}).status_code,422)
 
+    def test_failed_model_keeps_operator_review_and_hides_provider_error(self):
+        self.review()
+        before=self.client.get(self.url).json()
+        async def broken(call):
+            raise RuntimeError('private-provider-token')
+        with TestClient(create_app(self.path,request_extractor=broken)) as client:
+            response=client.post(self.url+'/extract',json={'revision':1})
+            self.assertEqual(response.status_code,503)
+            self.assertNotIn('private-provider-token',response.text)
+            self.assertEqual(client.get(self.url).json(),before)
+
+    def test_slow_extraction_cannot_overwrite_an_intervening_review(self):
+        async def concurrent(call):
+            self.assertEqual(self.review().status_code,200)
+            return await Extractor()(call)
+        with TestClient(create_app(self.path,request_extractor=concurrent)) as client:
+            response=client.post(self.url+'/extract',json={'revision':0})
+            self.assertEqual(response.status_code,409)
+            self.assertEqual(client.get(self.url).json()['request']['source'],'operator')
+
+    def test_later_review_updates_same_lead_and_marks_old_lead_revision(self):
+        self.review()
+        lead=self.client.post(self.url+'/follow-up',json={'revision':1}).json()['lead']
+        reviewed=self.client.put(self.url,json={'revision':1,'fields':{'service':'car service','preferred_day':'Sunday'},'owner':'Service desk'}).json()
+        self.assertNotEqual(reviewed['request']['revision'],reviewed['lead']['request_revision'])
+        updated=self.client.post(self.url+'/follow-up',json={'revision':2}).json()['lead']
+        self.assertEqual(updated['id'],lead['id'])
+        self.assertEqual(updated['created_at'],lead['created_at'])
+        self.assertEqual(updated['fields']['preferred_day'],'Sunday')
+
+
 
 class EvidenceTests(unittest.TestCase):
     def test_agent_claims_guesses_and_unknown_fields_are_rejected(self):

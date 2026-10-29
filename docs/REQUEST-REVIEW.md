@@ -28,3 +28,44 @@ quotes, edited and reviewed; a single local lead/task persists through restart;
 missing details stay unknown; model failures preserve the request; stale edits,
 unsafe extracted evidence, unreviewed follow-up and opted-out contacts are rejected.
 External actions remain disabled regardless of environment flags or submitted data.
+
+## Using the demo
+
+1. Run a browser voice conversation or a labelled typed simulation.
+2. End the voice session to open Call Detail, or open it from Call history.
+3. Select **Extract from transcript** for model suggestions, or enter the details.
+   Evidence quotes show the original customer statement and transcript turn.
+4. Clarify or leave unknown fields blank. Assign a team/owner and select
+   **Save reviewed request**. Unchanged extracted fields retain their evidence.
+5. Select **Create local follow-up**. The lead and task are stored in this
+   workspace only. Repeat saves update the same records. Later edits visibly
+   mark the existing local lead as an earlier revision until it is updated.
+
+Unknown service, AM/PM, calendar date and timezone are never filled from business
+assumptions. Use an IANA timezone when supplied by the operator. A reviewed
+request is still not a confirmed appointment. Opted-out/ineligible contacts are
+blocked at the follow-up endpoint even if they were eligible during the call.
+
+## Checks
+
+```sh
+.venv/bin/python -m unittest discover -s tests -q
+node --test tests/*.test.mjs
+# Optional browser test; uses Playwright from the existing video toolchain.
+# Install that toolchain with: cd video && npm ci
+node scripts/check_request_browser.mjs
+# One paid model extraction using fictional test statements:
+node scripts/check_request_browser.mjs --live-model
+```
+
+The browser helper starts/stops its own loopback server on an available port and
+uses a temporary database, never the ordinary workspace or VM. It requires
+Google Chrome, or set `BROWSER_PATH` to a compatible installed Chromium binary.
+Screenshots/report are written under ignored `runtime/request-browser-check/`.
+The checked path covers workflow create/edit, correction extraction, manual
+review, deduplicated follow-up, reload persistence, mobile horizontal fit and
+page errors. It does not exercise physical microphone acoustics or phone calls.
+
+Implementation references: [FastAPI routers](https://fastapi.tiangolo.com/tutorial/bigger-applications/)
+and [Pydantic configuration](https://docs.pydantic.dev/latest/api/config/).
+No new runtime dependencies or provider credentials are introduced.

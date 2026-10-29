@@ -58,7 +58,7 @@ The current local `.env` has been configured from the provider credentials the u
 2. Customize the agent's business facts, language, delivery and opening.
 3. In **Call studio**, choose Live browser voice, start and approve microphone access. Speak at any time to interrupt; Silero stops the AI, Gnani recognizes your words, and session memory preserves details and corrections.
 4. Try an unexpected question or correct an appointment preference. End the session and review the saved transcript and follow-up request together.
-5. Explain the next step honestly: a booking request needs availability verification; a handoff needs a person. No external action is executed.
+5. End the session to open Call Detail. Extract customer preferences, review the latest correction and unknowns, assign an owner, and save a local lead/follow-up. Calendar and CRM stay visibly disconnected; no external action is executed.
 6. Agree on one pilot workflow and a measurable outcome. History and analytics reflect actual stored browser sessions and labelled typed simulations, not fabricated sales results.
 
 An in-progress conversation survives page/server restarts; open it from Call history and select Resume. The runtime database lives in `runtime/relay.sqlite` by default. Keep the entire `runtime` directory private. To start an independent fresh demo, set DATABASE_PATH to a new file; do not delete a database containing wanted work.
@@ -73,6 +73,7 @@ An in-progress conversation survives page/server restarts; open it from Call his
 | Studio | Typed simulation plus browser voice: Gnani streaming STT/TTS, Bifrost LLM, exact PCM capture and reply timing |
 | Workflows | Create/edit/pause, segment selection, batch simulation, request deduplication, local tasks |
 | History | Search/filter, transcript viewer/export, configuration snapshots, resume active simulations |
+| Request review | Evidence-backed AI extraction, operator corrections, revision checks, owner assignment, deduplicated local lead/task |
 | Analytics | Derived all-time and weekly metrics; no invented production claims |
 | Privacy | Original redactor reused, extra email masking, escaped rendering, no frontend credentials |
 | Operations | Environment settings, optional local password, hosted-mode gates, backup tool, VM templates |
@@ -86,6 +87,7 @@ No fabricated activity history is seeded. Typed simulations and batch runs use s
 node --check static/app.js
 node --check static/views.js
 node --check static/forms.js
+node --test tests/*.test.mjs
 ```
 
 Node is needed only for optional JS syntax checks, not for running the product. Tests use temporary databases and no external services. See [verification report](docs/VERIFICATION.md) for browser checks, fixes and limitations.
@@ -103,6 +105,7 @@ The original voice engine contains useful failover and lifecycle behavior, but a
 - [Architecture, storage and provider boundary](docs/ARCHITECTURE.md)
 - [Feature overview and pitch guide](docs/DEMO-GUIDE.md)
 - [VM deployment preparation](docs/DEPLOYMENT.md)
+- [Structured requests, local follow-up and browser checks](docs/REQUEST-REVIEW.md)
 - [Roadmap and commercial release gates](docs/ROADMAP.md)
 - [Reuse provenance](docs/PROVENANCE.md)
 - [Voice integration and test plan](docs/VOICE-INTEGRATION.md)
@@ -111,4 +114,6 @@ The original voice engine contains useful failover and lifecycle behavior, but a
 
 ## Release status
 
-**Local browser voice demo, v0.2.0.** Provider connectivity and synthetic round-trip audio have been verified. The physical microphone flow still needs the operator to grant permission and speak. This is not a production multi-tenant SaaS or a validated telephone calling service. Exotel, real customer data and hosting remain later stages. Nothing has been deployed.
+**Single-workspace browser voice demo.** The authenticated Gnani demo was deployed on Azure; see [provider validation](docs/GNANI-VALIDATION.md). The latest structured-request changes are tested locally and are not deployed by this change. This is not a production multi-tenant SaaS or a validated telephone calling service.
+
+Request review supports optional post-call AI extraction using the existing server-side model configuration, with exact customer evidence and operator review. It creates workspace-local leads and follow-up tasks. External calendar, CRM, messaging and phone actions remain disabled by the owner's current preference. No additional integration credentials are required for this local workflow. Manual entry works without AI credentials.

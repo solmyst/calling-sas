@@ -1,6 +1,6 @@
-# VM preparation — not deployed
+# VM operations and deployment templates
 
-The templates prepare a private, password-protected demo on a Linux VM after explicit owner approval. They do not make this a production multi-tenant calling service. No VM, DNS, cloud account, firewall or existing company service has been changed.
+The templates prepare a private, password-protected demo on a Linux VM after explicit owner approval. They do not make this a production multi-tenant calling service. The authenticated demo was subsequently deployed on Azure; see [28 October validation](GNANI-VALIDATION.md). These templates are not a fresh audit of that VM. The structured-request update is locally validated and is not deployed by this change.
 
 ## Requirements
 A supported Linux host, Python 3.14 for the web demo, a dedicated unprivileged `relay` user, Caddy for HTTPS, an approved hostname, persistent local disk, and outbound package-registry access during installation. One process is appropriate for this SQLite/shared-password demo. A future Pipecat media worker needs a separately validated Python 3.12 environment, codec/media dependencies, CPU/audio-model compatibility and service accounts.

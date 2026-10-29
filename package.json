@@ -2,5 +2,5 @@
   "name": "relay-voice-browser",
   "private": true,
   "type": "module",
-  "scripts": {"test:voice": "node --test tests/voice-session.test.mjs"}
+  "scripts": {"test": "node --test tests/*.test.mjs", "test:voice": "node --test tests/voice-session.test.mjs"}
 }

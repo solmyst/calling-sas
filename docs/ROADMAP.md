@@ -3,10 +3,12 @@
 ## 0.1 — Local demo (this delivery)
 Independent dashboard and API; configurable agents; fictional contacts and consent flags; interactive simulations; workflow runs; transcripts; analytics; task tracking; server-side privacy filter; tests; VM templates. No company-service dependencies.
 
-## 0.2 — Real voice in a controlled sandbox
-Extract the original Pipecat worker behind immutable call context and provider/action adapters. Preserve tested STT/LLM/TTS failover, interruption controls, guards and timeouts. Remove company-only imports, endpoints and prompts. Preserve third-party notices. Connect owner-supplied model and speech accounts only after explicit configuration; validate actual model availability. Test browser audio, language quality, silence, noise, interruption, provider failure and concurrency. Do not call real customers during this phase.
+## 0.2 — Current browser voice and reviewed requests
+Gnani streaming STT/TTS, the configured model, exact PCM framing, Silero automatic interruption, noise-suppression requests, persistent conversation memory, four templates and an authenticated Azure demo are implemented. Physical-room acoustics still require listening checks; synthetic validation is not a quality SLA.
 
-Exit gate: repeatable synthetic audio suite, provider contract tests, trace isolation, bounded latency/error measurements and no unintended side effects.
+Structured requests now support post-call AI suggestions with customer evidence, manual corrections, assigned owners, optimistic revisions, an audit trail and workspace-local leads/tasks. Calendar/CRM actions remain disabled by owner preference. This latest slice has local API and real-browser validation and requires a separate deployment step.
+
+Next: per-turn end-to-end latency and usage measurement, a representative language/acoustic evaluation set, and one approved sandbox calendar/CRM when the owner selects and configures them. Keep public anonymous voice access closed until restricted sessions, duration/rate/concurrency limits and spending caps are implemented.
 
 ## 0.3 — Exotel / telephony pilot
 Implement origination and media adapters, signed webhooks, replay protection, idempotent reconciliation, calling windows, opt-out/consent evidence, destination allowlist, rate limits and spend limits. Require explicit live-call approval. Validate recording/disclosure policy and provider terms for the actual use case. Measure outcomes against a small consenting pilot baseline.
