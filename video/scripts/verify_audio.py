@@ -1,18 +1,23 @@
 """Optional paid intelligibility check: transcribe the final mix through Gnani."""
-import asyncio,json,subprocess,sys,re,hashlib
+import asyncio,json,subprocess,sys,re,hashlib,argparse
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT))
 from dotenv import load_dotenv
 load_dotenv(ROOT/'.env',override=False)
 from app.gnani import GnaniVoiceEngine
 from websockets.asyncio.client import connect
+parser=argparse.ArgumentParser()
+parser.add_argument('--video',type=Path,default=ROOT/'video/out/giani-hackathon-demo.mp4')
+parser.add_argument('--report',type=Path,default=ROOT/'video/out/audio-intelligibility.json')
+parser.add_argument('--review-cached',action='store_true')
+args=parser.parse_args()
 async def main():
-    report=ROOT/'video/out/audio-intelligibility.json'
-    if '--review-cached' in sys.argv:
-      transcripts=json.loads(report.read_text())['transcript']
-      return assess(transcripts,report)
+    report=args.report
+    if args.review_cached:
+      cached=json.loads(report.read_text())
+      return assess(cached['transcript'],report,cached.get('pcm_sha256'))
     voice=GnaniVoiceEngine();voice.require_ready()
-    pcm=subprocess.check_output(['ffmpeg','-v','error','-i',str(ROOT/'video/out/giani-hackathon-demo.mp4'),'-vn','-ar','16000','-ac','1','-f','s16le','-'])
+    pcm=subprocess.check_output(['ffmpeg','-v','error','-i',str(args.video),'-vn','-ar','16000','-ac','1','-f','s16le','-'])
     transcripts=[]
     async with connect(voice.streaming_stt_url,additional_headers=voice.streaming_headers('English'),compression=None,open_timeout=15) as upstream:
       async def receive():

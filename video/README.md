@@ -72,4 +72,18 @@ The optional `../.venv/bin/python scripts/verify_audio.py` sends the finished au
 
 Revision 2 removes the gateway name from narration, overlays, and the recorded voice UI. The backend integration is unchanged. Framing stays fixed; the whole app remains visible. Crossfades replace fade-through-background cuts, and a separately rendered cursor stays sharp over dialogs. The previous MP4 is kept under `out/previous/`.
 
+Revision 3 separates the voices: **Yashraj narrates the film; Shivani remains the AI agent** in the live conversation. Both use Gnani. Yashraj is a male narrative voice in the [official Timbre v3 catalogue](https://docs.gnani.ai/api/TTS/available-voices). The video-only `VIDEO_NARRATOR_VOICE` environment override defaults to `Yashraj`; it does not change the application's `GNANI_VOICE`. Voice/model/speed metadata accompanies the local narration cache, so changing the narrator regenerates the affected clips.
+
+To regenerate only narration and remix the reviewed revision 2 visuals, run from the repository root:
+
+```sh
+.venv/bin/python video/scripts/prepare.py --narration-only
+.venv/bin/python video/scripts/remix-narration.py
+.venv/bin/python video/scripts/verify_audio.py \
+  --video video/out/giani-hackathon-demo-v3.mp4 \
+  --report video/out/audio-intelligibility-v3.json
+```
+
+The first and last commands use paid Gnani APIs. The middle command is local: it copies the video stream, preserves the recorded conversation, checks that narration fits each scene, decodes and compares all 3,600 frames with revision 2, and checks the final duration and audio levels. It requires the previously rendered revision 2 film and its matching successful visual review. Results are saved in `out/voice-remix-review.json`; the output is `out/giani-hackathon-demo-v3.mp4`. It leaves the original revision 2 film intact. `--narration-only` does not seed or modify any application database.
+
 For a quick still preview after editing capture assets, run `node scripts/preview.mjs`. The optional `capture.mjs --memory-only` and `refine-memory.mjs` helpers re-record and replace only the memory chapter while preserving the continuous original soundtrack. A normal full build does not require these helpers.
