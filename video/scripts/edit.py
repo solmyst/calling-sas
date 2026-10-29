@@ -8,13 +8,16 @@ def run(args):subprocess.run(args,check=True)
 def duration(file):return float(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','csv=p=0',str(file)]))
 motions={}
 def ui(name,seconds):
-    original=CAP/(name+'.mp4');rate=max(1,duration(original)/seconds)
+    original=CAP/(name+'.mp4')
+    start=.9 if name=='memory' else 0
+    active=seconds-2.5 if name=='memory' else seconds
+    rate=max(1,(duration(original)-start)/active)
     motion=json.loads((CAP/(name+'-motion.json')).read_text())
     for e in motion['events']:
-        e['at']/=rate
+        e['at']=(e['at']-start)/rate
         if 'duration' in e:e['duration']/=rate
     motions[name]=motion
-    run(['ffmpeg','-v','error','-y','-i',str(original),'-vf',f'setpts=PTS/{rate},fps=60,tpad=stop_mode=clone:stop_duration={seconds}', '-t',str(seconds),'-an','-c:v','libx264','-crf','15','-pix_fmt','yuv420p',str(CAP/(name+'-edit.mp4'))])
+    run(['ffmpeg','-v','error','-y','-ss',str(start),'-i',str(original),'-vf',f'setpts=PTS/{rate},fps=60,tpad=stop_mode=clone:stop_duration={seconds}', '-t',str(seconds),'-an','-c:v','libx264','-crf','15','-pix_fmt','yuv420p',str(CAP/(name+'-edit.mp4'))])
 for name,seconds in [('choose',7),('configure',9),('memory',7),('analytics',4),('outro',5)]:ui(name,seconds)
 m=json.loads((ROOT/'public/manifest.json').read_text());offset=next(c for c in m['chapters'] if c['name']=='conversation')['audioOffset']
 raw=AUDIO/'conversation-source.wav'
