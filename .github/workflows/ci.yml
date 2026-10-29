@@ -19,3 +19,4 @@ jobs:
           node-version: "22"
       - run: node --check static/app.js && node --check static/forms.js && node --check static/views.js
       - run: node --check static/voice-session.js && node --test tests/voice-session.test.mjs
+      - run: node --test video/scripts/motion.test.mjs

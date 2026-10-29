@@ -1,6 +1,7 @@
 import {bundle} from '@remotion/bundler';
 import {selectComposition,renderMedia,ensureBrowser} from '@remotion/renderer';
 import path from 'node:path';
+import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
 const serveUrl=await bundle({entryPoint:path.resolve('src/index.jsx'),publicDir:path.resolve('public')});
 const browser=await ensureBrowser({chromeMode:'headless-shell'});
@@ -8,6 +9,7 @@ if(!('path' in browser))throw new Error('Remotion headless browser is unavailabl
 const browserExecutable=browser.path,chromiumOptions={gl:'swangle'};
 const composition=await selectComposition({serveUrl,id:'RelayHackathon',browserExecutable,chromiumOptions});
 let previous=-1;
-await renderMedia({composition,serveUrl,browserExecutable,chromiumOptions,imageFormat:'png',codec:'h264',audioCodec:'aac',crf:17,pixelFormat:'yuv420p',enforceAudioTrack:true,outputLocation:path.resolve('out/master.mp4'),concurrency:3,onProgress:({progress})=>{const p=Math.floor(progress*10)*10;if(p!==previous){previous=p;console.log(`Render ${p}%`);}}});
+await renderMedia({composition,serveUrl,browserExecutable,chromiumOptions,imageFormat:'png',codec:'h264',audioCodec:'aac',crf:17,pixelFormat:'yuv420p',enforceAudioTrack:true,outputLocation:path.resolve('out/master.mp4'),concurrency:4,onProgress:({progress})=>{const p=Math.floor(progress*10)*10;if(p!==previous){previous=p;console.log(`Render ${p}%`);}}});
 execFileSync('ffmpeg',['-v','error','-y','-i','out/master.mp4','-vf','scale=in_range=auto:out_range=tv:out_color_matrix=bt709','-c:v','libx264','-preset','medium','-crf','18','-pix_fmt','yuv420p','-color_range','tv','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709','-af','loudnorm=I=-16:TP=-1.5:LRA=7,aresample=48000,atrim=duration=60','-c:a','aac','-b:a','192k','-t','60','-movflags','+faststart','out/giani-hackathon-demo.mp4']);
-console.log('Rendered out/giani-hackathon-demo.mp4');
+fs.copyFileSync('out/giani-hackathon-demo.mp4','out/giani-hackathon-demo-v2.mp4');
+console.log('Rendered out/giani-hackathon-demo-v2.mp4');

@@ -5,41 +5,48 @@ import {execFileSync} from 'node:child_process';
 const BASE='http://127.0.0.1:8792',OUT=path.resolve('public/capture');
 await fs.mkdir(OUT,{recursive:true});
 const browser=await chromium.launch({channel:process.env.VIDEO_BROWSER_CHANNEL||undefined,headless:true,args:['--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling']});
-const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});
+const page=await browser.newPage({viewport:{width:1440,height:810},deviceScaleFactor:1});
 await page.addInitScript({path:'scripts/instrument.js'});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 page.on('console',m=>{if(m.type()==='error')errors.push(m.text().replace(/https?:\/\/\S+/g,'[URL]'));});
 await page.goto(BASE+'/#demos');await page.locator('h1').waitFor();
 const pause=ms=>page.waitForTimeout(ms);
-async function move(locator){await locator.scrollIntoViewIfNeeded();const b=await locator.boundingBox();await page.evaluate(({x,y})=>window.__demo.move(x,y),{x:b.x+b.width/2,y:b.y+b.height/2});await pause(750);}
+async function move(locator){await locator.evaluate(el=>el.scrollIntoView({behavior:'smooth',block:'nearest'}));await pause(650);const b=await locator.boundingBox();await page.evaluate(({x,y})=>window.__demo.move(x,y),{x:b.x+b.width/2,y:b.y+b.height/2});await pause(750);await page.mouse.move(b.x+b.width/2,b.y+b.height/2);}
 async function click(locator){await move(locator);await page.evaluate(()=>window.__demo.click());await locator.click();await pause(450);}
 async function nav(label){await click(page.getByRole('link',{name:label,exact:true}));}
+const memoryOnly=process.argv.includes('--memory-only');
+const existing=memoryOnly?JSON.parse(await fs.readFile('public/manifest.json','utf8')):null;
 const chapters=[];let audioWallClock;
 async function record(name,actions){
  const dir=path.join(OUT,name);await fs.rm(dir,{recursive:true,force:true});await fs.mkdir(dir,{recursive:true});
+ const initial=await page.evaluate(()=>window.__demo.point);await page.evaluate(()=>window.__demo.motion=[]);
  const cdp=await page.context().newCDPSession(page);let frames=[],pending=[],index=0;
  cdp.on('Page.screencastFrame',event=>{
   const n=index++,file=`${String(n).padStart(6,'0')}.jpg`;
   frames.push({file,t:event.metadata.timestamp});pending.push(fs.writeFile(path.join(dir,file),Buffer.from(event.data,'base64')));
   cdp.send('Page.screencastFrameAck',{sessionId:event.sessionId}).catch(()=>{});
  });
- await cdp.send('Page.startScreencast',{format:'jpeg',quality:96,maxWidth:1440,maxHeight:900,everyNthFrame:1});
+ await cdp.send('Page.startScreencast',{format:'jpeg',quality:96,maxWidth:1440,maxHeight:810,everyNthFrame:1});
  const start=Date.now();await pause(150);await actions();await pause(300);
  await cdp.send('Page.stopScreencast');await Promise.all(pending);await cdp.detach();
  const duration=(Date.now()-start)/1000;
+ if(/bifrost|brifort/i.test(await page.locator('body').innerText()))throw new Error('Unwanted provider name is visible.');
  if(frames.length<2)throw new Error('No capture frames: '+name);
  let concat='';for(let i=0;i<frames.length;i++){concat+=`file '${frames[i].file}'\nduration ${i+1<frames.length?Math.max(.001,frames[i+1].t-frames[i].t):.3}\n`;}
  concat+=`file '${frames.at(-1).file}'\n`;await fs.writeFile(path.join(dir,'frames.txt'),concat);
- execFileSync('ffmpeg',['-v','error','-y','-f','concat','-safe','0','-i',path.join(dir,'frames.txt'),'-vf','fps=30','-c:v','libx264','-crf','15','-pix_fmt','yuv420p','-an',path.join(OUT,name+'.mp4')]);
+ execFileSync('ffmpeg',['-v','error','-y','-f','concat','-safe','0','-i',path.join(dir,'frames.txt'),'-vf','fps=60','-c:v','libx264','-crf','15','-pix_fmt','yuv420p','-an',path.join(OUT,name+'.mp4')]);
+ const motion=await page.evaluate(()=>window.__demo.motion);
+ await fs.writeFile(path.join(OUT,name+'-motion.json'),JSON.stringify({initial,events:motion.map(e=>({...e,at:e.wallClock/1000-frames[0].t}))},null,2));
  await page.screenshot({path:path.join(OUT,name+'-last.png')});
  const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','json',path.join(OUT,name+'.mp4')]));
  chapters.push({name,duration:Number(probe.format.duration),frames:frames.length,...(name==='conversation'?{audioOffset:audioWallClock/1000-frames[0].t}:{})});
  console.log(name,chapters.at(-1));
 }
 try{
+ let callId=existing?.callId,transcript=existing?.transcript;
+ if(!memoryOnly){
  await record('choose',async()=>{
-  await pause(1600);await page.mouse.wheel(0,365);await pause(800);
-  await move(page.locator('[data-test-agent="demo-sales"]'));await pause(650);
+  await pause(1400);await page.evaluate(()=>window.scrollBy({top:360,behavior:'smooth'}));await pause(900);
   await move(page.locator('[data-edit-agent="demo-booking"]'));await pause(600);
  });
  await record('configure',async()=>{
@@ -51,7 +58,6 @@ try{
   await page.locator('#studio-contact').selectOption('video-contact-0');
   await click(page.locator('#studio-mode'));await page.locator('#studio-mode').selectOption('browser');await page.keyboard.press('Escape');await pause(700);
  });
- let callId,transcript;
  await record('conversation',async()=>{
   audioWallClock=await page.evaluate(()=>window.__demo.begin());
   await click(page.getByRole('button',{name:'Start conversation',exact:true}));
@@ -72,16 +78,21 @@ try{
   if(call.transcript.filter(t=>t.delivery_status==='interrupted').length<1)throw new Error('The real barge-in was not observed.');
   if(!/Saturday|शनिवार/i.test(call.transcript.at(-1).text))throw new Error('Latest correction was not used.');
  });
+ }else{await page.goto(BASE+'/#history');await page.locator('h1').waitFor();}
  await record('memory',async()=>{
   await nav('Call history');await click(page.locator(`[data-call="${callId}"]`).first());
   await page.locator('#modal .transcript').evaluate(el=>el.scrollTop=el.scrollHeight);await pause(1100);
-  await click(page.getByText('Session memory · customer-provided notes',{exact:true}));await pause(1500);
+  await click(page.getByText('Session memory · customer-provided notes',{exact:true}));
+  await page.locator('#modal .snapshot').first().locator('li').last().evaluate(el=>el.scrollIntoView({behavior:'smooth',block:'nearest'}));await pause(1500);
  });
+ if(!memoryOnly){
  await page.getByRole('button',{name:'Close dialog',exact:true}).click();
  await record('analytics',async()=>{await nav('Analytics');await pause(1400);await move(page.getByRole('heading',{name:'Agent performance',exact:true}));await pause(900);});
  await nav('Demo experiences');
- await record('outro',async()=>{await pause(1400);await page.mouse.wheel(0,370);await pause(1200);await move(page.locator('[data-test-agent="demo-booking"]'));await pause(1000);});
- await fs.writeFile('public/manifest.json',JSON.stringify({chapters,callId,transcript,errors,width:1440,height:900,provider:'Gnani Prisma / Bifrost / Gnani Timbre',fictionalData:true},null,2));
+ await record('outro',async()=>{await pause(1400);await page.evaluate(()=>window.scrollBy({top:360,behavior:'smooth'}));await pause(1200);await move(page.locator('[data-test-agent="demo-booking"]'));await pause(1000);});
+ }
+ const finalChapters=memoryOnly?existing.chapters.map(c=>c.name==='memory'?chapters[0]:c):chapters;
+ await fs.writeFile('public/manifest.json',JSON.stringify({chapters:finalChapters,callId,transcript,errors,width:1440,height:810,provider:'Gnani speech / AI agent',fictionalData:true},null,2));
  if(errors.length)throw new Error('Browser errors: '+errors.join('; '));
  console.log('Capture complete. Real API transcript saved.');
-}finally{await browser.close();}
+}catch(error){await page.screenshot({path:'out/capture-failed.png'});console.error('Audio diagnostics',await page.evaluate(()=>window.__demo.audioErrors));throw error;}finally{await browser.close();}

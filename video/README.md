@@ -1,8 +1,8 @@
 # Relay Voice — 60-second Gnani Hackathon film
 
-The film is composed in **Remotion**, using high-quality CDP/Playwright recordings of the existing Relay Voice application. No dashboard component, transcript, provider response, or successful action is mocked. The only injected elements are the visible cursor and a recording-only virtual microphone fed with generated customer speech. Narration and customer samples use the configured Gnani Timbre adapter. The conversation uses the real Gnani Prisma → Bifrost → Gnani Timbre pipeline.
+The film is composed in **Remotion**, using high-quality CDP/Playwright recordings of the existing Relay Voice application. No dashboard component, transcript, provider response, or successful action is mocked. A recording-only virtual microphone is fed with generated customer speech. The cursor is composed separately from measured interaction coordinates, at 60 fps; app pixels and responses remain real. Narration and customer samples use the configured Gnani Timbre adapter. The conversation uses the real Gnani speech recognition → AI agent → Gnani voice pipeline.
 
-**Output:** `out/giani-hackathon-demo.mp4`, 1920 × 1080, 30 fps, exactly 60 seconds, H.264 / AAC / yuv420p. Nothing is posted to social media automatically.
+**Output:** `out/giani-hackathon-demo-v2.mp4` (also saved as `out/giani-hackathon-demo.mp4`), 1920 × 1080, 60 fps, exactly 60 seconds, H.264 / AAC / yuv420p. Nothing is posted to social media automatically.
 
 ## Render on this Mac
 
@@ -43,8 +43,8 @@ npm run review
 |---|---|---|
 | 0–7 s | Demo experience gallery | Four concrete workflows |
 | 7–16 s | Agent editor → Call studio | Language, instructions, business context |
-| 16–22 s | Browser voice configuration | Gnani STT/TTS with Bifrost |
-| 22–44 s | Recorded live voice conversation | Natural interruption and the latest correction |
+| 16–20 s | Browser voice configuration | Gnani speech and the AI agent |
+| 20–44 s | Recorded live voice conversation | Natural interruption and the latest correction |
 | 44–51 s | Conversation details and memory | Persisted transcript and customer context |
 | 51–55 s | Analytics | Outcomes traceable to stored demo conversations |
 | 55–60 s | Demo gallery | Product name and public demo link |
@@ -55,10 +55,10 @@ Silent waits in the voice take are shortened and labelled in the film. Speech re
 
 - `scripts/prepare.py`: recording-only configuration, fictional contacts, real offline rehearsal history, Gnani narration.
 - `scripts/server.py`: the unchanged product app factory with an isolated database and an audio-fixture mount.
-- `scripts/instrument.js`: visible eased cursor, virtual customer microphone, actual browser audio recording.
+- `scripts/instrument.js`: visible eased interaction-coordinate recording, virtual customer microphone, actual browser audio recording.
 - `scripts/capture.mjs`: real buttons/forms/navigation; lossless-timing high-quality capture; checks interruption metadata and corrected Saturday response; fails on browser errors.
 - `scripts/edit.py`: records silent-wait cuts, aligns audio/video, prepares the exact chapter durations and original synth bed.
-- `src/index.jsx`: Remotion typography, camera framing, chapter transitions, original product icon, progress line and audio mix.
+- `src/index.jsx`: Remotion typography, steady framing, 60 fps cursor interpolation, crossfades, original product icon, progress line and audio mix.
 - `scripts/render.mjs`: pinned Remotion Headless Shell, PNG frames, software rendering, then H.264/AAC with BT.709 limited range and fast-start metadata.
 - `scripts/review.py` and `scripts/ocr.swift`: decode every frame, OCR each distinct overlay locally and compare its title/caption pixels on every stable frame, reject duplicated-image artifacts, check black frames/title contrast, track the cursor template, check audio peaks, and create full-size keyframes and contact sheets covering every frame.
 
@@ -66,6 +66,10 @@ Generated media, capture state, the synthetic recording database, and `node_modu
 
 ## Scope of verification
 
-Automated checks inspect all 1,800 frames; a visual review of full-size keyframes and all-frame contact sheets checks framing and typography. This is an edited product demonstration using fictional participants and synthetic speech, not a latency benchmark, a real customer call, a confirmed booking, or a production accuracy claim. Native microphone noise suppression and loudspeaker echo still depend on the viewer's own device; this recording uses a virtual microphone.
+Automated checks inspect all 3,600 frames; a visual review of full-size keyframes and all-frame contact sheets checks framing and typography. This is an edited product demonstration using fictional participants and synthetic speech, not a latency benchmark, a real customer call, a confirmed booking, or a production accuracy claim. Native microphone noise suppression and loudspeaker echo still depend on the viewer's own device; this recording uses a virtual microphone.
 
-The optional `../.venv/bin/python scripts/verify_audio.py` sends the finished audio mix to the configured Gnani STT account and checks intelligibility of the product name, workflow explanation, speech stack, and corrected Saturday-at-two preference. This is a paid API check and is deliberately separate from the free cached re-render. Its raw returned transcript is retained locally in `out/audio-intelligibility.json`.
+The optional `../.venv/bin/python scripts/verify_audio.py` sends the finished audio mix to the configured Gnani STT account and checks intelligibility of the product name, workflow explanation, removal of the unwanted provider name, and corrected Saturday-at-two preference. This is a paid API check and is deliberately separate from the free cached re-render. Its raw returned transcript is retained locally in `out/audio-intelligibility.json`.
+
+Revision 2 removes the gateway name from narration, overlays, and the recorded voice UI. The backend integration is unchanged. Framing stays fixed; the whole app remains visible. Crossfades replace fade-through-background cuts, and a separately rendered cursor stays sharp over dialogs. The previous MP4 is kept under `out/previous/`.
+
+For a quick still preview after editing capture assets, run `node scripts/preview.mjs`. The optional `capture.mjs --memory-only` and `refine-memory.mjs` helpers re-record and replace only the memory chapter while preserving the continuous original soundtrack. A normal full build does not require these helpers.

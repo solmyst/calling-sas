@@ -23,16 +23,17 @@
   return result;
  };
  const originalPlay=HTMLMediaElement.prototype.play;
- const observed=new WeakSet();
+ const observed=new WeakSet(),playbackContexts=[];
  HTMLMediaElement.prototype.play=function(){
   if(this instanceof HTMLAudioElement&&!observed.has(this)){
    const context=new NativeContext();context.resume();
-   const source=context.createMediaElementSource(this);source.connect(context.destination);observed.add(this);
+   const source=context.createMediaElementSource(this);source.connect(context.destination);observed.add(this);playbackContexts.push({context,source,element:this});
+   this.addEventListener('error',()=>window.__demo.audioErrors.push({code:this.error?.code,message:this.error?.message}));
   }
   return originalPlay.call(this);
  };
  window.__demo={
-  events:[],
+  events:[],audioErrors:[],
   async begin(){await ensure();chunks=[];startTime=performance.now();recorder=new MediaRecorder(mix.stream,{mimeType:'audio/webm;codecs=opus',audioBitsPerSecond:192000});recorder.ondataavailable=e=>chunks.push(e.data);recorder.start(100);return Date.now();},
   async speak(name){
    await ensure();const wav=await(await fetch('/video-audio/'+name+'.wav')).arrayBuffer();
@@ -45,14 +46,12 @@
    return {data,events:this.events};
   }
  };
- addEventListener('DOMContentLoaded',()=>{
-  const cursor=document.createElement('div');cursor.id='demo-cursor';
-  cursor.innerHTML='<svg width="36" height="44" viewBox="0 0 24 30"><path d="M2 2 L2 25 L8 19 L12 28 L16 26 L12 17 L21 17 Z" fill="#204e40" stroke="white" stroke-width="2" stroke-linejoin="round"/></svg>';
-  Object.assign(cursor.style,{position:'fixed',left:'0',top:'0',zIndex:'2147483647',pointerEvents:'none',filter:'drop-shadow(0 3px 6px #0006)',transform:'translate(120px,100px)',transition:'transform 700ms cubic-bezier(.22,.61,.36,1)'});document.body.append(cursor);
-  window.__demo.move=(x,y)=>cursor.style.transform=`translate(${x}px,${y}px)`;
-  window.__demo.click=()=>{
-   const ring=document.createElement('span');Object.assign(ring.style,{position:'absolute',left:'-14px',top:'-14px',width:'38px',height:'38px',borderRadius:'50%',border:'3px solid #87ac72',background:'#cce4b944'});cursor.append(ring);
-   ring.animate([{transform:'scale(.5)',opacity:1},{transform:'scale(1.8)',opacity:0}],{duration:550,fill:'forwards'});setTimeout(()=>ring.remove(),600);
-  };
- });
+ window.__demo.motion=[];
+ window.__demo.point={x:120,y:100};
+ window.__demo.move=(x,y)=>{
+  const from={...window.__demo.point};
+  window.__demo.motion.push({type:'move',wallClock:Date.now(),duration:.7,from,to:{x,y}});
+  window.__demo.point={x,y};
+ };
+ window.__demo.click=()=>window.__demo.motion.push({type:'click',wallClock:Date.now(),...window.__demo.point});
 })();

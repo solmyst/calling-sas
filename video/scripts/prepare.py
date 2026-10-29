@@ -1,5 +1,7 @@
 """Generate fictional demo configuration and Gnani narration with server-only keys."""
 import asyncio,json,sys,wave,subprocess
+from datetime import datetime,timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
@@ -12,14 +14,18 @@ from app.engine import DemoProvider,now
 from app.memory import update_memory
 AUDIO=ROOT/'video/public/audio';AUDIO.mkdir(parents=True,exist_ok=True)
 STORE=Store(ROOT/'runtime/hackathon-video.sqlite');seed(STORE)
+today=datetime.now(ZoneInfo('Asia/Kolkata')).date()
+friday=today+timedelta(days=(4-today.weekday())%7)
+saturday=today+timedelta(days=(5-today.weekday())%7)
+calendar_facts=f' Calendar facts: the upcoming Friday is {friday.isoformat()}; the upcoming Saturday is {saturday.isoformat()}. Use weekday and spoken time only in replies; never add a numerical calendar date.'
 with STORE.transaction() as db:
     # Replace only the fixed recording fixtures; no activity is invented as live.
     agent=Store.get(db,'agents','demo-booking')
     agent.update(name='Nisha',language='English',role='Appointment intake for Meridian Auto',industry='Automobile service',delivery='warm',
       opening="Hi Riya, I'm Nisha, an AI assistant at Meridian Auto. Which service and time would you prefer?",
       question='What time would suit you?',
-      context='Fictional demo business: Meridian Auto, a car service centre in Pune. Routine servicing and vehicle inspections. Hours Monday to Saturday, nine in the morning to six in the evening. All appointment times use Asia/Kolkata. No calendar connection: record a request only; the team must confirm availability. Customer Riya wants a routine car service.',
-      prompt='Disclose AI in the opening. Collect service, date and time, then read back the request. Keep each response under twenty-five words. Prefer the latest correction. Do not repeat questions already answered. For Friday/Saturday use the next upcoming date from server time. Never claim a confirmed booking: the team checks availability. Do not ask for payment or private identifiers.')
+      context='Fictional demo business: Meridian Auto, a car service centre in Pune. Routine servicing and vehicle inspections. Hours Monday to Saturday, nine in the morning to six in the evening. All appointment times use Asia/Kolkata. No calendar connection: record a request only; the team must confirm availability. Customer Riya wants a routine car service.'+calendar_facts,
+      prompt='Disclose AI in the opening. Collect service, date and time, then read back the request. Keep each response under twenty-five words. Prefer the latest correction. Do not repeat questions already answered. Read back only the weekday and time, such as Friday at eleven or Saturday at two. Do not add a calendar date or numerical date. Never claim a confirmed booking: the team checks availability. Do not ask for payment or private identifiers.')
     Store.put(db,'agents',agent)
     names=['Riya Shah','Kabir Mehta','Ananya Rao','Arjun Nair','Meera Iyer','Dev Kapoor']
     for i,name in enumerate(names):
@@ -36,17 +42,18 @@ with STORE.transaction() as db:
 clips={
 'intro':'Every enquiry needs a response. Relay Voice turns your business context into an AI voice conversation.',
 'configure':'Choose a workflow. Set the language, instructions, and business facts. Here, Nisha handles vehicle service requests.',
-'liveintro':'This is the real browser voice pipeline. Listen as the customer changes their preferred time.',
+'liveintro':'Now, a live conversation. Watch the time change.',
 'review':'The latest correction stays in memory. Review the transcript and follow-up request, without losing the context.',
-'outro':'Gnani handles speech. Bifrost powers the conversation. Relay Voice brings it together for sales, support, and appointment intake.',
+'outro':'Powered by Gnani speech, Relay Voice brings natural AI conversations to sales, customer support, and appointment intake. Try the demo.',
 'customer-one':'Routine car service, this Friday at eleven please.',
 'customer-two':'Actually, Saturday at two instead.',
 }
+previous=json.loads((AUDIO/'script.json').read_text()) if (AUDIO/'script.json').exists() else {}
 async def main():
     voice=GnaniVoiceEngine();voice.require_ready()
     for name,text in clips.items():
       target=AUDIO/(name+'.wav')
-      if not target.exists():
+      if not target.exists() or previous.get(name)!=text:
         target.write_bytes(await voice.speak(text,'English','warm'))
       # Gnani's streaming WAV header advertises an unknown payload length.
       normalized=target.with_suffix('.normalized.wav')

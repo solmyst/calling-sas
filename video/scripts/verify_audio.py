@@ -1,5 +1,5 @@
 """Optional paid intelligibility check: transcribe the final mix through Gnani."""
-import asyncio,json,subprocess,sys,re
+import asyncio,json,subprocess,sys,re,hashlib
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT))
 from dotenv import load_dotenv
@@ -24,15 +24,15 @@ async def main():
         await upstream.send(pcm[i:i+1024].ljust(1024,b'\0'));await asyncio.sleep(.024)
       for _ in range(60):await upstream.send(bytes(1024));await asyncio.sleep(.024)
       await asyncio.sleep(2);reader.cancel();await asyncio.gather(reader,return_exceptions=True)
-    assess(transcripts,report)
+    assess(transcripts,report,hashlib.sha256(pcm).hexdigest())
 
-def assess(transcripts,report):
+def assess(transcripts,report,pcm_hash=None):
     text=' '.join(transcripts).lower()
     checks={name:phrase in text for name,phrase in [('product','relay'),('workflow','workflow'),('correction','saturday'),('context','context')]}
     # STT formats spoken numbers as digits and may transliterate proper names.
     checks['preferred_time']=bool(re.search(r'\bsaturday\b.{0,30}\b(?:two|2)\b',text))
-    checks['speech_stack']=any(name in text for name in ('bifrost','byfrost','by frost'))
-    result={'passed':all(checks.values()),'checks':checks,'transcript':transcripts,'method':'Final rendered mix → real Gnani STT; no physical microphone'}
+    checks['removed_name_absent']=not bool(re.search(r'bi[fv]rost|byfrost|by frost|brifort|bifort',text))
+    result={'passed':all(checks.values()),'checks':checks,'transcript':transcripts,'pcm_sha256':pcm_hash,'method':'Final rendered mix → real Gnani STT; no physical microphone'}
     report.write_text(json.dumps(result,indent=2));print(json.dumps({'passed':result['passed'],'checks':checks}))
     if not result['passed']:raise RuntimeError('Review the final audio transcript.')
 asyncio.run(main())

@@ -16,7 +16,7 @@ DispatchQueue.concurrentPerform(iterations:4){worker in
    let file=files[index]
    guard let src=CGImageSourceCreateWithURL(file as CFURL,nil),let img=CGImageSourceCreateImageAtIndex(src,0,nil) else{return}
    var texts:[String]=[]
-   for region in [CGRect(x:0.03,y:0.81,width:0.94,height:0.11),CGRect(x:0.03,y:0.035,width:0.94,height:0.06)] {
+   for region in [CGRect(x:0.12,y:0.85,width:0.76,height:0.09),CGRect(x:0.12,y:0.012,width:0.76,height:0.05)] {
     let request=VNRecognizeTextRequest();request.recognitionLevel = .accurate;request.usesLanguageCorrection=true;request.recognitionLanguages=["en-US"];request.regionOfInterest=region
     do{try VNImageRequestHandler(cgImage:img,options:[:]).perform([request]);texts += (request.results ?? []).compactMap{$0.topCandidates(1).first?.string}}catch{}
    }

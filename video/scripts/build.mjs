@@ -15,6 +15,7 @@ try{
   if(!ready)throw new Error('Isolated recording server did not start.');
   await run('node',['scripts/capture.mjs']);
  }
+ await run('node',['--test','scripts/motion.test.mjs']);
  await run(python,['scripts/edit.py']);
  await run('node',['scripts/render.mjs']);
  await run(python,['scripts/review.py']);
