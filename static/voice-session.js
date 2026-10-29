@@ -83,7 +83,7 @@ export class VoiceSession {
   clearTimeout(this.turnTimer);this.turnTimer=setTimeout(()=>this.drain(),80);
  }
  stopPlayback(){
-  if(this.player){this.player.pause();this.player.src='';this.player=null;}
+  if(this.player){this.player.onended=null;this.player.onerror=null;this.player.pause();this.player.src='';this.player=null;}
   if(this.audioURL){URL.revokeObjectURL(this.audioURL);this.audioURL=null;}
   for(const source of this.sources){try{source.stop();}catch{}}
   this.sources.clear();this.nextAudioTime=0;this.control(false);

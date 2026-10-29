@@ -15,6 +15,24 @@ function setup(fetchImpl=async()=>{throw new Error('Unexpected request');}){
 }
 const audio=Buffer.from([1,0,2,0]).toString('base64');
 
+test('finishing the opening does not report an empty-source playback error',async()=>{
+ const {session,statuses}=setup();
+ const previousAudio=globalThis.Audio;let player;
+ globalThis.Audio=class{
+  constructor(){player=this;}
+  async play(){} pause(){}
+  set src(value){if(value==='')this.onerror?.();}
+ };
+ try{
+  session.activeId='opening:call-one';
+  await session.playFile(audio,'audio/wav',session.epoch);
+  player.onended();
+  assert.equal(statuses.at(-1),'Listening… speak naturally.');
+  assert.equal(statuses.some(s=>s.includes('failed')),false);
+  assert.equal(session.activeId,null);
+ }finally{globalThis.Audio=previousAudio;await session.close();}
+});
+
 test('Silero speech event immediately stops queued audio and aborts the old response',async()=>{
  const {session,calls,created}=setup();
  session.epoch=3;session.activeId='old-response';session.processing=true;
