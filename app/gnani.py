@@ -9,11 +9,32 @@ import base64
 import json
 import os
 import re
+import io
+import wave
 from dataclasses import dataclass
 
 from websockets.asyncio.client import connect
 
 from .voice import VoiceConfigurationError, VoiceEngine, VoiceProviderError
+
+
+def browser_wav(audio):
+    """Finalize streaming WAV length fields without changing its PCM samples."""
+    try:
+        with wave.open(io.BytesIO(audio), 'rb') as source:
+            channels, width, rate = source.getnchannels(), source.getsampwidth(), source.getframerate()
+            pcm = source.readframes(len(audio))
+        if not pcm:
+            raise ValueError('Empty audio')
+        output = io.BytesIO()
+        with wave.open(output, 'wb') as target:
+            target.setnchannels(channels)
+            target.setsampwidth(width)
+            target.setframerate(rate)
+            target.writeframes(pcm)
+        return output.getvalue()
+    except (wave.Error, EOFError, ValueError):
+        raise VoiceProviderError('Gnani returned invalid WAV audio.') from None
 
 
 @dataclass(frozen=True)
@@ -123,7 +144,7 @@ class GnaniVoiceEngine(VoiceEngine):
             )
             if response.status_code >= 400 or not response.content.startswith(b"RIFF"):
                 raise VoiceProviderError("Gnani voice generation is unavailable. Check voice access and credits.")
-            return response.content
+            return browser_wav(response.content)
         except VoiceProviderError:
             raise
         except Exception:

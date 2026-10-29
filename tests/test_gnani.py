@@ -1,6 +1,8 @@
 import asyncio
 import base64
 import json
+import io
+import wave
 import os
 import tempfile
 import unittest
@@ -9,7 +11,7 @@ from unittest.mock import patch
 import httpx
 from fastapi.testclient import TestClient
 
-from app.gnani import GnaniConfig, GnaniVoiceEngine
+from app.gnani import GnaniConfig, GnaniVoiceEngine, browser_wav
 from app.main import create_app
 from app.seed import seed
 from app.store import Store
@@ -76,15 +78,31 @@ class GnaniTests(unittest.TestCase):
 
     def test_rest_tts_auth_and_actual_audio_format(self):
         seen = []
+        sample = io.BytesIO()
+        with wave.open(sample, 'wb') as wav:
+            wav.setparams((1, 2, 24000, 0, 'NONE', 'not compressed'))
+            wav.writeframes(b'\x01\x00' * 240)
         def handler(request):
             seen.append(request)
-            return httpx.Response(200, content=b"RIFFtest-wave-audio", headers={"content-type": "audio/wav"})
+            return httpx.Response(200, content=sample.getvalue(), headers={"content-type": "audio/wav"})
         client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         audio = asyncio.run(engine(client).speak("Hello", "English"))
         self.assertTrue(audio.startswith(b"RIFF"))
         self.assertEqual(seen[0].headers["X-API-Key-ID"], "test-only")
         self.assertEqual(json.loads(seen[0].content)["language"], "en-IN")
         asyncio.run(client.aclose())
+
+    def test_streaming_wav_header_is_finalized_without_altering_audio(self):
+        sample = io.BytesIO()
+        pcm = b'\x01\x00' * 2400
+        with wave.open(sample, 'wb') as wav:
+            wav.setparams((1, 2, 24000, 0, 'NONE', 'not compressed'))
+            wav.writeframes(pcm)
+        streaming = bytearray(sample.getvalue())
+        streaming[4:8] = streaming[40:44] = b'\xff' * 4
+        with wave.open(io.BytesIO(browser_wav(bytes(streaming))), 'rb') as wav:
+            self.assertEqual(wav.getnframes(), 2400)
+            self.assertEqual(wav.readframes(2400), pcm)
 
     def test_provider_error_does_not_leak_response_or_key(self):
         client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(403, text="secret-upstream-body")))
