@@ -46,6 +46,10 @@ English, Hindi and Hinglish are configurable. Account connectivity and synthetic
 
 Ending a call keeps **Call Studio visible**. Conversation Details opens only when selected; there is no automatic post-call popup.
 
+## Visual theme
+
+The dashboard and marketing site use **oatmeal `#E8DCC6`**, **pine green `#1F3B2E`** and **soft lilac `#CBB3E8`**. Warm surfaces, pine navigation and lilac accents share CSS tokens in [`static/style.css`](static/style.css) and [`site/style.css`](site/style.css); semantic error states remain distinct.
+
 ## Quick start
 
 ### Requirements
