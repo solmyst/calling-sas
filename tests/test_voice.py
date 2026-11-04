@@ -47,6 +47,24 @@ class MissingVoiceEngine:
 
 
 class VoiceTests(unittest.TestCase):
+    def test_default_http_client_is_reused_until_engine_shutdown(self):
+        engine = VoiceEngine(
+            config=VoiceConfig(
+                assemblyai_key="stt-secret", bifrost_key="bifrost-secret",
+                bifrost_url="https://gateway.example/v1", bifrost_model="gemini/test",
+                elevenlabs_key="voice-secret", elevenlabs_voice="voice-id",
+                elevenlabs_model="eleven_flash_v2_5",
+            )
+        )
+
+        first = engine._http()
+        second = engine._http()
+
+        self.assertIs(first, second)
+        import asyncio
+        asyncio.run(engine.aclose())
+        self.assertTrue(first.is_closed)
+
     def test_streaming_url_uses_low_latency_pcm_configuration(self):
         config = VoiceConfig(
             assemblyai_key="stt-secret", bifrost_key="bifrost-secret",
@@ -120,7 +138,10 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(audio, b"ID3audio")
         bifrost = seen[0]
         self.assertEqual(bifrost.headers["x-bf-vk"], "bifrost-secret")
-        self.assertEqual(json.loads(bifrost.content)["model"], "gemini/test-model")
+        model_request = json.loads(bifrost.content)
+        self.assertEqual(model_request["model"], "gemini/test-model")
+        serialized_messages = json.dumps(model_request["messages"])
+        self.assertEqual(serialized_messages.count("Tell me more."), 1)
         eleven = seen[1]
         self.assertEqual(eleven.headers["xi-api-key"], "voice-secret")
         self.assertIn("voice-id", str(eleven.url))

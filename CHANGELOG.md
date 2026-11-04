@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Reduced browser-call response latency by reusing model connections and preparing Gnani speech generation in parallel with Gemini.
+- Removed duplicate recent transcript content from model requests while retaining older session memory.
+- Added lifecycle cleanup and regression coverage for prepared voice connections, including model failure paths.
+
 ## 0.2.0 — 2026-10-25
 
 - Added a local push-to-talk browser voice mode with AssemblyAI transcription, Bifrost conversation generation and ElevenLabs speech.

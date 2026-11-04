@@ -1,5 +1,6 @@
 import asyncio, base64, hashlib, hmac, json, logging, os, re, secrets, time, uuid
 from collections import Counter, defaultdict, deque
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -198,9 +199,16 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         voice = GnaniVoiceEngine()
     else:
         voice = VoiceEngine()
+    @asynccontextmanager
+    async def lifespan(_app):
+        yield
+        if hasattr(voice, "aclose"):
+            await voice.aclose()
+
     app = FastAPI(
         title="Relay Voice",
         version="0.1.0",
+        lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -641,6 +649,8 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
 
         async def events():
             started = time.perf_counter()
+            prepared_task = None
+            prepared_connection = None
             def event(value):
                 return json.dumps(value, ensure_ascii=False) + "\n"
             try:
@@ -657,7 +667,12 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                     c["transcript"] = latest["transcript"] + [{"role": "customer", "text": private(body.text), "at": now(), "response_id": body.request_id}]
                     update_memory(c)
                     Store.put(db, "calls", c)
+                if hasattr(voice, "prepare_speech"):
+                    prepared_task = asyncio.create_task(voice.prepare_speech())
+                    await asyncio.sleep(0)
                 answer = private(await voice.reply(c))
+                if prepared_task is not None:
+                    prepared_connection = await prepared_task
                 model_ms = round((time.perf_counter() - started) * 1000)
                 c["transcript"].append({"role": "agent", "text": answer, "at": now(), "delivery_status": "generated", "response_id": body.request_id})
                 # Persist generated text before audio delivery. Provider/playback
@@ -671,7 +686,13 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                     Store.put(db, "calls", latest)
                 yield event({"type": "reply", "call": latest, "llm_ms": model_ms, "response_id": body.request_id})
                 first_audio_ms = None
-                async for chunk in voice.speech_chunks(answer, c["agent_snapshot"].get("language", "English"), c["agent_snapshot"].get("delivery", "warm")):
+                speech = voice.speech_chunks(
+                    answer,
+                    c["agent_snapshot"].get("language", "English"),
+                    c["agent_snapshot"].get("delivery", "warm"),
+                    **({"connection": prepared_connection} if prepared_connection is not None else {}),
+                )
+                async for chunk in speech:
                     if first_audio_ms is None:
                         first_audio_ms = round((time.perf_counter() - started) * 1000)
                     yield event({"type": "audio", "audio": base64.b64encode(chunk).decode(), "sample_rate": 24000})
@@ -689,6 +710,16 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             except Exception:
                 yield event({"type": "error", "message": "Voice response failed. Your saved transcript is available; retry or restart the session."})
             finally:
+                if prepared_task is not None and prepared_connection is None:
+                    if not prepared_task.done():
+                        prepared_task.cancel()
+                    prepared_result = (await asyncio.gather(
+                        prepared_task, return_exceptions=True
+                    ))[0]
+                    if not isinstance(prepared_result, BaseException):
+                        prepared_connection = prepared_result
+                if prepared_connection is not None:
+                    await voice.close_speech(prepared_connection)
                 if active_responses.get(id) is active:
                     active_responses.pop(id, None)
                     responding.discard(id)

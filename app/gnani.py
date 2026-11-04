@@ -149,34 +149,53 @@ class GnaniVoiceEngine(VoiceEngine):
             raise
         except Exception:
             raise VoiceProviderError("Gnani voice generation is unavailable.") from None
-        finally:
-            if self._client is None:
-                await client.aclose()
 
-    async def speech_chunks(self, text, language="English", delivery="neutral"):
-        """Yield raw 24 kHz PCM as generated, rather than awaiting a full file."""
-        self.require_ready()
+    async def prepare_speech(self):
+        """Open the TTS socket while the language model is generating text."""
         try:
-            async with connect(
+            return await connect(
                 "wss://api.vachana.ai/api/v1/tts",
                 additional_headers={"X-API-Key-ID": self.gnani.api_key},
                 compression=None, open_timeout=10, max_size=4_000_000,
-            ) as upstream:
-                await upstream.send(json.dumps(self.synthesis_payload(text, language, "raw", delivery)))
-                while True:
-                    message = await asyncio.wait_for(upstream.recv(), 25)
-                    event = json.loads(message)
-                    if event.get("type") == "error":
-                        raise VoiceProviderError("Gnani voice generation is unavailable.")
-                    data = event.get("data") or {}
-                    if data.get("audio"):
-                        chunk = base64.b64decode(data["audio"], validate=True)
-                        if len(chunk) % 2:
-                            raise VoiceProviderError("Gnani returned invalid PCM audio.")
+            )
+        except Exception:
+            raise VoiceProviderError("Gnani realtime voice connection failed.") from None
+
+    async def close_speech(self, connection):
+        await connection.close()
+
+    async def speech_chunks(self, text, language="English", delivery="neutral", connection=None):
+        """Yield raw 24 kHz PCM as generated, rather than awaiting a full file."""
+        self.require_ready()
+        try:
+            if connection is None:
+                async with connect(
+                    "wss://api.vachana.ai/api/v1/tts",
+                    additional_headers={"X-API-Key-ID": self.gnani.api_key},
+                    compression=None, open_timeout=10, max_size=4_000_000,
+                ) as upstream:
+                    async for chunk in self._speech_chunks(upstream, text, language, delivery):
                         yield chunk
-                    if event.get("type") == "complete" or data.get("is_final"):
-                        return
+            else:
+                async for chunk in self._speech_chunks(connection, text, language, delivery):
+                    yield chunk
         except VoiceProviderError:
             raise
         except Exception:
             raise VoiceProviderError("Gnani realtime voice connection failed.") from None
+
+    async def _speech_chunks(self, upstream, text, language, delivery):
+        await upstream.send(json.dumps(self.synthesis_payload(text, language, "raw", delivery)))
+        while True:
+            message = await asyncio.wait_for(upstream.recv(), 25)
+            event = json.loads(message)
+            if event.get("type") == "error":
+                raise VoiceProviderError("Gnani voice generation is unavailable.")
+            data = event.get("data") or {}
+            if data.get("audio"):
+                chunk = base64.b64decode(data["audio"], validate=True)
+                if len(chunk) % 2:
+                    raise VoiceProviderError("Gnani returned invalid PCM audio.")
+                yield chunk
+            if event.get("type") == "complete" or data.get("is_final"):
+                return

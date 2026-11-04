@@ -45,6 +45,32 @@ class FakeStreamingVoice:
         yield b"\x01\x00" * 240
 
 
+class FakePrewarmedVoice(FakeStreamingVoice):
+    def __init__(self):
+        self.preparing = False
+        self.connection = object()
+        self.closed_connection = None
+
+    async def prepare_speech(self):
+        self.preparing = True
+        await asyncio.sleep(0)
+        return self.connection
+
+    async def reply(self, call):
+        if not self.preparing:
+            raise AssertionError("TTS was not prepared while the model was running")
+        await asyncio.sleep(0)
+        return await super().reply(call)
+
+    async def speech_chunks(self, text, language, delivery, connection=None):
+        if connection is not self.connection:
+            raise AssertionError("Prepared TTS connection was not reused")
+        yield b"\x01\x00" * 240
+
+    async def close_speech(self, connection):
+        self.closed_connection = connection
+
+
 class GnaniTests(unittest.TestCase):
     def test_requires_dedicated_key_without_fallback(self):
         with self.assertRaises(VoiceConfigurationError):
@@ -128,6 +154,34 @@ class GnaniTests(unittest.TestCase):
 
     def test_streaming_transcript_audio_timing_and_followup(self):
         self._stream_flow()
+
+    def test_tts_connection_is_prepared_in_parallel_with_model_reply(self):
+        voice = FakePrewarmedVoice()
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}):
+            with TestClient(create_app(temp + "/db.sqlite", voice_engine=voice)) as client:
+                call = client.post("/api/calls", json={"agent_id": "demo-booking", "contact_id": "contact-1", "mode": "browser"}).json()
+                response = client.post(
+                    f"/api/calls/{call['id']}/voice/respond/stream",
+                    json={"text": "Tomorrow morning please"},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.text.splitlines()[-1])["type"], "complete")
+        self.assertIs(voice.closed_connection, voice.connection)
+
+    def test_prepared_tts_connection_closes_when_model_reply_fails(self):
+        voice = FakePrewarmedVoice()
+        voice.fail_model = True
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}):
+            with TestClient(create_app(temp + "/db.sqlite", voice_engine=voice)) as client:
+                call = client.post("/api/calls", json={"agent_id": "demo-booking", "contact_id": "contact-1", "mode": "browser"}).json()
+                response = client.post(
+                    f"/api/calls/{call['id']}/voice/respond/stream",
+                    json={"text": "Tomorrow morning please"},
+                )
+
+        self.assertEqual(json.loads(response.text.splitlines()[-1])["type"], "error")
+        self.assertIs(voice.closed_connection, voice.connection)
 
     def test_tts_failure_keeps_generated_transcript_and_releases_session(self):
         self._stream_flow(fail_audio=True)

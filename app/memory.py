@@ -18,10 +18,17 @@ def update_memory(call):
     return call["memory"]
 
 
-def memory_context(call):
+def memory_context(call, exclude_recent_turns=0):
     memory = call.get("memory") or update_memory(call)
+    stored = memory.get("customer_notes", [])[-32:]
+    if exclude_recent_turns:
+        recent_customers = sum(
+            turn["role"] == "customer"
+            for turn in call["transcript"][-exclude_recent_turns:]
+        )
+        stored = stored[:-recent_customers] if recent_customers else stored
     notes = []
-    for note in memory.get("customer_notes", [])[-32:]:
+    for note in stored:
         text = note["text"]
         if len(text) > 350:
             text = text[:170] + " … " + text[-170:]
