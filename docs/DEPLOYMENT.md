@@ -1,6 +1,8 @@
 # VM operations and deployment templates
 
-The templates prepare a private, password-protected demo on a Linux VM after explicit owner approval. They do not make this a production multi-tenant calling service. The authenticated demo was subsequently deployed on Azure; see [28 October validation](GNANI-VALIDATION.md). These templates are not a fresh audit of that VM. The structured-request update is locally validated and is not deployed by this change.
+The templates prepare a private, password-protected demo on a Linux VM after explicit owner approval. They do not make this a production multi-tenant calling service. The authenticated demo was subsequently deployed on Azure; see [28 October validation](GNANI-VALIDATION.md). On 5 November 2026 the VM was updated through runtime commit `0d7266b` with Groq-primary/Gemini-fallback routing and per-stage voice timing. The release passed VM-local tests, public HTTPS login and dashboard checks, SQLite integrity, and live synthetic Groq/Gnani provider checks. No phone call was placed.
+
+The pre-update code, environment and consistent SQLite backup are stored root-only at `/var/backups/relay-voice/pre-0d7266b-20261105-015232`. The first release attempt rolled back automatically when release-directory permissions prevented the service user from entering `/opt/relay-voice`; deployment was repeated with the application root restored to mode `0755` and then passed health checks.
 
 ## Requirements
 A supported Linux host, Python 3.14 for the web demo, a dedicated unprivileged `relay` user, Caddy for HTTPS, an approved hostname, persistent local disk, and outbound package-registry access during installation. One process is appropriate for this SQLite/shared-password demo. A future Pipecat media worker needs a separately validated Python 3.12 environment, codec/media dependencies, CPU/audio-model compatibility and service accounts.

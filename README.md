@@ -226,7 +226,7 @@ The helper uses its own loopback server and temporary database. Additional provi
 
 The [GitHub Pages website](https://solmyst.github.io/calling-sas/) is deployed from `site/`. **GitHub Pages hosts the marketing site only**: it cannot run FastAPI, private API keys, SQLite or the server-side speech connections.
 
-The voice application has a separate authenticated Azure VM demo. The 28 October deployment/provider checks are recorded in [Gnani validation](docs/GNANI-VALIDATION.md). Later request-review and studio-popup changes have been verified locally; pushing source does not deploy the VM backend.
+The voice application has a separate authenticated Azure VM demo. The 28 October deployment/provider checks are recorded in [Gnani validation](docs/GNANI-VALIDATION.md). The VM was updated through runtime commit `0d7266b` on 5 November 2026 and passed public HTTPS, authentication, database-integrity, Groq-primary/Gemini-fallback, Gnani TTS and Gnani STT checks. Pushing source alone does not deploy the VM backend.
 
 For a hosted demo, use [VM operations](docs/DEPLOYMENT.md) and the templates in `deploy/`: a private environment file, persistent storage, an unprivileged service, a reverse proxy with HTTPS, process supervision and tested backups. Nothing in the local startup or test commands deploys infrastructure or enables telephone calling.
 
