@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added automatic Groq-to-Gemini failover for rate limits and transient capacity failures, with a cooldown circuit and per-stage ASR, LLM, and TTS timing.
+- Reduced the measured Gnani speech-end setting from 600 ms to 500 ms after a live synthetic comparison lowered final-transcript wait by about 215 ms across English and Hindi samples.
 - Added a selectable Groq Qwen conversation backend with non-reasoning dialogue mode, backend-only authentication, and explicit Gemini configuration fallback.
 - Added a prefetched, language-matched Gnani backchannel to cover slow-response gaps without delaying model generation or polluting transcripts.
 - Constrained Gemini voice replies to the documented `minimal` reasoning level and reinforced final opt-out and no-tool checks.

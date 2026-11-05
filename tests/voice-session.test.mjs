@@ -86,6 +86,22 @@ test('recognized interruption words become the next request after cancellation a
  await session.close();
 });
 
+test('speech endpoint and provider timings are sent with the recognized turn',async()=>{
+ const requests=[];
+ const events=[{type:'reply',call:{id:'call-one',transcript:[]}},{type:'audio',audio,sample_rate:24000},{type:'complete'}];
+ const {session}=setup(async(url,options)=>{
+  requests.push(JSON.parse(options.body));
+  return new Response(events.map(x=>JSON.stringify(x)+'\n').join(''),{status:200});
+ });
+ session.receive({type:'vad_speech_end'});
+ session.receive({type:'Turn',transcript:'Thursday afternoon',end_of_turn:true,turn_order:'timed',stt_ms:284});
+ await new Promise(resolve=>setTimeout(resolve,120));
+ assert.equal(requests[0].stt_provider_ms,284);
+ assert.equal(Number.isInteger(requests[0].asr_ms),true);
+ assert.equal(requests[0].asr_ms>=0,true);
+ await session.close();
+});
+
 test('duplicate final transcripts do not create duplicate AI replies',async()=>{
  let requests=0;
  const {session}=setup(async()=>{requests++;return new Response('{"type":"complete"}\n');});

@@ -111,7 +111,8 @@ BIFROST_MODELS=
 | `GNANI_SILENCE_MS` | Recognition endpointing setting; tune through evaluation rather than assuming lower is better |
 | `GNANI_SPEED`, `GNANI_AUDIO_TAGS` | Synthesis speed and optional delivery tags |
 | `BIFROST_URL`, `BIFROST_VK`, `BIFROST_MODELS`, `BIFROST_REASONING_EFFORT` | Approved conversation gateway URL, virtual key and model ID; reasoning defaults to `minimal` for lower-latency voice replies |
-| `LLM_PROVIDER`, `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_REASONING_EFFORT` | Select `groq` for low-latency Qwen dialogue; Qwen reasoning defaults to `none`. Use `bifrost` to return to Gemini. |
+| `LLM_PROVIDER`, `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_REASONING_EFFORT` | Select `groq` for low-latency Qwen dialogue; Qwen reasoning defaults to `none`. Use `bifrost` to make Gemini primary. |
+| `LLM_FALLBACK_ENABLED`, `GROQ_FALLBACK_TIMEOUT_SECONDS`, `GROQ_CIRCUIT_SECONDS` | With Groq primary, route capacity, rate-limit, timeout and transient failures to the configured Gemini gateway. The circuit avoids retrying Groq during its cooldown. |
 | `PORT`, `PUBLIC_ORIGIN` | Listening port and exact browser origin; change them together |
 | `DATABASE_PATH` | SQLite file; defaults to `runtime/relay.sqlite` |
 | `DEMO_PASSWORD` | Optional shared workspace password locally; required in hosted mode |
@@ -157,8 +158,10 @@ flowchart LR
     Browser --> STT[Authenticated speech WebSocket proxy]
     STT --> GnaniSTT[Gnani Prisma STT]
     STT --> VAD[Local Silero VAD]
-    API --> Model[Server-side conversation model]
-    Model --> TTS[Gnani Timbre streaming TTS]
+    API --> Groq[Groq Qwen primary]
+    Groq -. capacity or transient failure .-> Gemini[Gemini fallback]
+    Groq --> TTS[Gnani Timbre streaming TTS]
+    Gemini --> TTS
     TTS --> API
     API --> Browser
     API --> Review[Request review and local follow-up]

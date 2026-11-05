@@ -8,7 +8,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.voice import VoiceConfig, VoiceConfigurationError, VoiceEngine
+from app.voice import VoiceConfig, VoiceConfigurationError, VoiceEngine, VoiceProviderError
 from unittest.mock import patch
 
 
@@ -190,6 +190,117 @@ class VoiceTests(unittest.TestCase):
         payload = json.loads(request.content)
         self.assertEqual(payload["model"], "qwen/qwen3.8-27b")
         self.assertEqual(payload["reasoning_effort"], "none")
+
+    def test_groq_rate_limit_falls_back_to_gemini_and_opens_circuit(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            if request.url.host == "api.groq.com":
+                return httpx.Response(429, headers={"retry-after": "60"})
+            return httpx.Response(
+                200, json={"choices": [{"message": {"content": "Gemini fallback reply."}}]}
+            )
+
+        config = VoiceConfig(
+            assemblyai_key="stt-secret", bifrost_key="bifrost-secret",
+            bifrost_url="https://gateway.example/v1", bifrost_model="gemini/test-model",
+            elevenlabs_key="voice-secret", elevenlabs_voice="voice-id",
+            elevenlabs_model="eleven_flash_v2_5", llm_provider="groq",
+            groq_key="groq-secret", groq_model="qwen/qwen3.8-27b",
+        )
+        engine = VoiceEngine(
+            config=config, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        )
+        call = {
+            "agent_snapshot": {"name": "Mira", "prompt": "Be concise.", "context": "Approved facts."},
+            "transcript": [{"role": "customer", "text": "Help me."}],
+        }
+
+        import asyncio
+        first = asyncio.run(engine.reply(call))
+        second = asyncio.run(engine.reply(call))
+        asyncio.run(engine._client.aclose())
+
+        self.assertEqual(first, "Gemini fallback reply.")
+        self.assertEqual(second, "Gemini fallback reply.")
+        self.assertEqual([request.url.host for request in seen], [
+            "api.groq.com", "gateway.example", "gateway.example",
+        ])
+        groq_payload = json.loads(seen[0].content)
+        fallback_payload = json.loads(seen[1].content)
+        self.assertEqual(groq_payload["messages"], fallback_payload["messages"])
+        self.assertEqual(fallback_payload["model"], "gemini/test-model")
+        self.assertEqual(fallback_payload["reasoning_effort"], "minimal")
+        self.assertEqual(seen[1].headers["x-bf-vk"], "bifrost-secret")
+
+    def test_groq_auth_error_does_not_hide_bad_configuration_with_fallback(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(401)
+
+        config = VoiceConfig(
+            assemblyai_key="stt-secret", bifrost_key="bifrost-secret",
+            bifrost_url="https://gateway.example/v1", bifrost_model="gemini/test-model",
+            elevenlabs_key="voice-secret", elevenlabs_voice="voice-id",
+            elevenlabs_model="eleven_flash_v2_5", llm_provider="groq",
+            groq_key="invalid", groq_model="qwen/qwen3.8-27b",
+        )
+        engine = VoiceEngine(
+            config=config, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        )
+        call = {
+            "agent_snapshot": {"name": "Mira", "prompt": "Be concise.", "context": "Approved facts."},
+            "transcript": [{"role": "customer", "text": "Help me."}],
+        }
+
+        import asyncio
+        with self.assertRaises(VoiceProviderError):
+            asyncio.run(engine.reply(call))
+        asyncio.run(engine._client.aclose())
+
+        self.assertEqual([request.url.host for request in seen], ["api.groq.com"])
+
+    def test_groq_exhausted_success_routes_next_turn_directly_to_gemini(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            if request.url.host == "api.groq.com":
+                return httpx.Response(
+                    200,
+                    headers={"x-ratelimit-remaining-tokens": "0"},
+                    json={"choices": [{"message": {"content": "Last Groq reply."}}]},
+                )
+            return httpx.Response(
+                200, json={"choices": [{"message": {"content": "Gemini reply."}}]}
+            )
+
+        config = VoiceConfig(
+            assemblyai_key="stt-secret", bifrost_key="bifrost-secret",
+            bifrost_url="https://gateway.example/v1", bifrost_model="gemini/test-model",
+            elevenlabs_key="voice-secret", elevenlabs_voice="voice-id",
+            elevenlabs_model="eleven_flash_v2_5", llm_provider="groq",
+            groq_key="groq-secret", groq_model="qwen/qwen3.8-27b",
+        )
+        engine = VoiceEngine(
+            config=config, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        )
+        call = {
+            "agent_snapshot": {"name": "Mira", "prompt": "Be concise.", "context": "Facts."},
+            "transcript": [{"role": "customer", "text": "Help me."}],
+        }
+
+        import asyncio
+        self.assertEqual(asyncio.run(engine.reply(call)), "Last Groq reply.")
+        self.assertEqual(asyncio.run(engine.reply(call)), "Gemini reply.")
+        asyncio.run(engine._client.aclose())
+
+        self.assertEqual(
+            [request.url.host for request in seen], ["api.groq.com", "gateway.example"]
+        )
 
     def test_browser_voice_turn_persists_transcript_and_returns_audio(self):
         with tempfile.TemporaryDirectory() as temp:

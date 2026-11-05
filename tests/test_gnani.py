@@ -84,6 +84,7 @@ class GnaniTests(unittest.TestCase):
         self.assertEqual(headers["x-format"], "codemix")
         self.assertEqual(headers["x-sample-rate"], "16000")
         self.assertEqual(headers["x-model"], "prisma-v3.0")
+        self.assertEqual(headers["x-min-silence-ms"], "500")
         self.assertEqual(e.stream_event('{"type":"connected"}'), {"type": "ready"})
         event = e.stream_event(json.dumps({"type": "transcript", "text": "कल की booking", "segment_id": "s-1", "latency": 310}))
         self.assertEqual(event["transcript"], "कल की booking")
@@ -207,7 +208,9 @@ class GnaniTests(unittest.TestCase):
             with TestClient(create_app(temp + "/db.sqlite", voice_engine=voice)) as c:
                 call = c.post("/api/calls", json={"agent_id": "demo-booking", "contact_id": "contact-1", "mode": "browser"}).json()
                 path = f"/api/calls/{call['id']}"
-                response = c.post(path + "/voice/respond/stream", json={"text": "Tomorrow morning please"})
+                response = c.post(path + "/voice/respond/stream", json={
+                    "text": "Tomorrow morning please", "asr_ms": 412, "stt_provider_ms": 267,
+                })
                 self.assertEqual(response.status_code, 200)
                 events = [json.loads(x) for x in response.text.splitlines()]
                 saved = c.get(path).json()
@@ -218,6 +221,9 @@ class GnaniTests(unittest.TestCase):
                 if not (fail_audio or fail_model):
                     self.assertEqual(len(base64.b64decode(events[1]["audio"])), 480)
                     self.assertIsNotNone(saved["voice_timing"]["first_audio_ms"])
+                    self.assertEqual(saved["voice_timing"]["asr_ms"], 412)
+                    self.assertEqual(saved["voice_timing"]["stt_provider_ms"], 267)
+                    self.assertIsNotNone(saved["voice_timing"]["tts_first_audio_ms"])
                 ended = c.post(path + "/end").json()
                 self.assertEqual(ended["outcome"], "follow_up")
                 self.assertIn("No external action", ended["summary"])

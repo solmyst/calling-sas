@@ -73,6 +73,9 @@ export class VoiceSession {
   if(message.type==='vad_speech_start'){
    this.interrupt();this.status('Listening… go ahead.');return;
   }
+  if(message.type==='vad_speech_end'){
+   this.speechEndedAt=performance.now();return;
+  }
   if(message.type==='processing'){if(!this.playing)this.status('Understanding…');return;}
   if(message.type!=='Turn')return;
   const text=(message.transcript||'').trim();
@@ -80,6 +83,9 @@ export class VoiceSession {
   const key=String(message.turn_order??text);
   if(this.seen.has(key))return;
   this.seen.add(key);if(this.seen.size>128)this.seen.delete(this.seen.values().next().value);
+  this.pendingAsrMs=this.speechEndedAt?Math.max(0,Math.round(performance.now()-this.speechEndedAt)):null;
+  this.pendingSttProviderMs=Number.isFinite(Number(message.stt_ms))?Math.max(0,Math.round(Number(message.stt_ms))):null;
+  this.speechEndedAt=0;
   // Even a short word below the VAD duration threshold can be a real correction.
   this.interrupt();this.queue.push(text);
   clearTimeout(this.turnTimer);this.turnTimer=setTimeout(()=>this.drain(),80);
@@ -135,6 +141,8 @@ export class VoiceSession {
   try{await this.interruptAck;}catch{this.onError('Could not synchronize the interrupted reply. Please restart the session.');return;}
   if(this.closed||this.paused||this.processing||!this.queue.length)return;
   const text=this.queue.splice(0).join(' ').slice(0,2000);
+  const asrMs=this.pendingAsrMs,sttProviderMs=this.pendingSttProviderMs;
+  this.pendingAsrMs=this.pendingSttProviderMs=null;
   const epoch=++this.epoch,requestId=crypto.randomUUID();
   this.activeId=requestId;this.processing=true;this.playStarted=0;this.finished=false;this.currentInput=text;
   const controller=new AbortController();this.controller=controller;
@@ -150,7 +158,7 @@ export class VoiceSession {
   }
   try{
    const response=await this.fetchImpl(`${this.basePath}/api/calls/${this.call.id}/voice/respond${this.streaming?'/stream':''}`,{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,request_id:requestId}),signal:controller.signal,
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,request_id:requestId,asr_ms:asrMs,stt_provider_ms:sttProviderMs}),signal:controller.signal,
    });
    if(!response.ok)throw new Error('The AI could not respond. Please retry or restart the session.');
    if(this.streaming)await this.readStream(response,epoch);

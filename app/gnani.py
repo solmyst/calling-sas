@@ -43,7 +43,7 @@ class GnaniConfig:
     stt_model: str = "prisma-v3.0"
     tts_model: str = "timbre-v3.0"
     voice: str = "Shivani"
-    silence_ms: int = 600
+    silence_ms: int = 500
     speed: float = 1.0
     audio_tags: bool = False
 
@@ -54,7 +54,7 @@ class GnaniConfig:
             stt_model=os.getenv("GNANI_STT_MODEL", "prisma-v3.0").strip(),
             tts_model=os.getenv("GNANI_TTS_MODEL", "timbre-v3.0").strip(),
             voice=os.getenv("GNANI_VOICE", "Shivani").strip(),
-            silence_ms=max(300, min(2000, int(os.getenv("GNANI_SILENCE_MS", "600")))),
+            silence_ms=max(300, min(2000, int(os.getenv("GNANI_SILENCE_MS", "500")))),
             speed=max(0.85, min(1.15, float(os.getenv("GNANI_SPEED", "1.0")))),
             audio_tags=os.getenv("GNANI_AUDIO_TAGS", "false").lower() == "true",
         )

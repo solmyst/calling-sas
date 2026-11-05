@@ -94,6 +94,8 @@ class Turn(Model):
 class VoiceText(Model):
     text: str = Field(min_length=1, max_length=2000)
     request_id: str = Field(default_factory=lambda: uuid.uuid4().hex, min_length=1, max_length=100)
+    asr_ms: int | None = Field(default=None, ge=0, le=30000)
+    stt_provider_ms: int | None = Field(default=None, ge=0, le=30000)
 
 
 class Interrupt(Model):
@@ -697,9 +699,9 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                     prepared_task = asyncio.create_task(voice.prepare_speech())
                     await asyncio.sleep(0)
                 answer = private(await voice.reply(c))
+                model_ms = round((time.perf_counter() - started) * 1000)
                 if prepared_task is not None:
                     prepared_connection = await prepared_task
-                model_ms = round((time.perf_counter() - started) * 1000)
                 c["transcript"].append({"role": "agent", "text": answer, "at": now(), "delivery_status": "generated", "response_id": body.request_id})
                 # Persist generated text before audio delivery. Provider/playback
                 # failure must not erase the customer's input or the answer.
@@ -724,8 +726,14 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                     yield event({"type": "audio", "audio": base64.b64encode(chunk).decode(), "sample_rate": 24000})
                 if first_audio_ms is None:
                     raise VoiceProviderError("No generated audio was received.")
-                timing = {"first_audio_ms": first_audio_ms, "llm_ms": model_ms,
-                          "total_ms": round((time.perf_counter() - started) * 1000)}
+                timing = {
+                    "asr_ms": body.asr_ms,
+                    "stt_provider_ms": body.stt_provider_ms,
+                    "llm_ms": model_ms,
+                    "tts_first_audio_ms": max(0, first_audio_ms - model_ms),
+                    "first_audio_ms": first_audio_ms,
+                    "total_ms": round((time.perf_counter() - started) * 1000),
+                }
                 with store.transaction() as db:
                     latest = require(db, "calls", id)
                     latest["voice_timing"] = timing
