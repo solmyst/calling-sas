@@ -155,6 +155,17 @@ class GnaniTests(unittest.TestCase):
     def test_streaming_transcript_audio_timing_and_followup(self):
         self._stream_flow()
 
+    def test_backchannel_audio_is_available_before_a_slow_reply(self):
+        voice = FakeStreamingVoice()
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}):
+            with TestClient(create_app(temp + "/db.sqlite", voice_engine=voice)) as client:
+                call = client.post("/api/calls", json={"agent_id": "demo-booking", "contact_id": "contact-1", "mode": "browser"}).json()
+                response = client.post(f"/api/calls/{call['id']}/voice/backchannel")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["sample_rate"], 24000)
+        self.assertEqual(len(base64.b64decode(response.json()["audio"])), 480)
+
     def test_tts_connection_is_prepared_in_parallel_with_model_reply(self):
         voice = FakePrewarmedVoice()
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}):

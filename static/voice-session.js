@@ -4,6 +4,7 @@ export class VoiceSession {
   Object.assign(this,{basePath,api,onCall,onStatus,onError,fetchImpl,getMicrophone});
   this.epoch=0;this.closed=true;this.sources=new Set();this.seen=new Set();
   this.queue=[];this.interruptAck=Promise.resolve();this.nextAudioTime=0;
+  this.backchannelDelay=650;this.backchannelTurns=0;this.turnNumber=0;
  }
  status(text){this.onStatus(text)}
  isCurrent(epoch){return !this.closed&&this.epoch===epoch}
@@ -31,6 +32,7 @@ export class VoiceSession {
     // Silero confirms speech, and Gnani keeps the beginning of the utterance.
     this.socket.send(this.paused?new ArrayBuffer(1024):event.data);
    };
+   this.loadBackchannel();
    await this.connect();if(resume)this.status('Conversation restored. Listening…');else await this.opening();
   }catch(error){await this.close();throw error;}
  }
@@ -83,6 +85,7 @@ export class VoiceSession {
   clearTimeout(this.turnTimer);this.turnTimer=setTimeout(()=>this.drain(),80);
  }
  stopPlayback(){
+  clearTimeout(this.backchannelTimer);this.backchannelTimer=null;
   if(this.player){this.player.onended=null;this.player.onerror=null;this.player.pause();this.player.src='';this.player=null;}
   if(this.audioURL){URL.revokeObjectURL(this.audioURL);this.audioURL=null;}
   for(const source of this.sources){try{source.stop();}catch{}}
@@ -112,6 +115,12 @@ export class VoiceSession {
   }catch(error){if(this.isCurrent(epoch)&&error.name!=='AbortError')throw error;}
   finally{if(this.isCurrent(epoch)){this.processing=false;this.controller=null;}}
  }
+ async loadBackchannel(){
+  try{
+   const response=await this.fetchImpl(`${this.basePath}/api/calls/${this.call.id}/voice/backchannel`,{method:'POST'});
+   if(response.ok)this.backchannel=await response.json();
+  }catch{}
+ }
  async playFile(audio,type,epoch){
   const bytes=Uint8Array.from(atob(audio),c=>c.charCodeAt(0));
   this.audioURL=URL.createObjectURL(new Blob([bytes],{type}));
@@ -130,6 +139,15 @@ export class VoiceSession {
   this.activeId=requestId;this.processing=true;this.playStarted=0;this.finished=false;this.currentInput=text;
   const controller=new AbortController();this.controller=controller;
   this.status('Thinking…');
+  this.turnNumber++;
+  const terminal=/\b(stop calling|do not call|don't call|not interested|unsubscribe|no thanks)\b/i.test(text);
+  if(this.backchannel&&!terminal&&this.turnNumber%2===1){
+   this.backchannelTimer=setTimeout(()=>{
+    if(this.isCurrent(epoch)&&this.processing&&!this.sources.size){
+     this.backchannelTurns++;this.schedule(this.backchannel.audio,this.backchannel.sample_rate,epoch,true);
+    }
+   },this.backchannelDelay);
+  }
   try{
    const response=await this.fetchImpl(`${this.basePath}/api/calls/${this.call.id}/voice/respond${this.streaming?'/stream':''}`,{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,request_id:requestId}),signal:controller.signal,
@@ -155,7 +173,7 @@ export class VoiceSession {
     for(const line of lines){
      if(!line.trim())continue;if(!this.isCurrent(epoch))return;
      const event=JSON.parse(line);
-     if(event.type==='reply'){this.call=event.call;this.onCall(event.call);this.status('Preparing voice…');}
+     if(event.type==='reply'){clearTimeout(this.backchannelTimer);this.backchannelTimer=null;this.call=event.call;this.onCall(event.call);this.status('Preparing voice…');}
      if(event.type==='audio')this.schedule(event.audio,event.sample_rate,epoch);
      if(event.type==='complete')this.finished=true;
      if(event.type==='error')throw new Error(event.message);
@@ -165,7 +183,7 @@ export class VoiceSession {
    if(!this.finished)throw new Error('The voice stream ended early. Please retry.');
   }finally{reader.releaseLock();}
  }
- schedule(audio,sampleRate,epoch){
+ schedule(audio,sampleRate,epoch,interstitial=false){
   if(!this.isCurrent(epoch))return;
   const bytes=Uint8Array.from(atob(audio),c=>c.charCodeAt(0)),view=new DataView(bytes.buffer);
   const buffer=this.context.createBuffer(1,bytes.length/2,sampleRate),channel=buffer.getChannelData(0);
@@ -178,6 +196,7 @@ export class VoiceSession {
   source.onended=()=>{
    this.sources.delete(source);
    if(this.isCurrent(epoch)&&!this.sources.size&&this.finished){this.control(false);this.activeId=null;this.status('Listening… speak naturally.');}
+   else if(this.isCurrent(epoch)&&!this.sources.size&&interstitial){this.control(false);this.status('Thinking…');}
   };
  }
  async toggle(){
@@ -189,6 +208,7 @@ export class VoiceSession {
  async close(){
   this.closed=true;if(this.activeId)this.interrupt();this.epoch++;this.activeId=null;this.processing=false;
   clearTimeout(this.turnTimer);clearTimeout(this.reconnectTimer);this.reconnectTimer=null;
+  clearTimeout(this.backchannelTimer);this.backchannelTimer=null;
   this.controller?.abort();this.controller=null;this.stopPlayback();this.socket?.close();this.socket=null;
   this.processor?.disconnect();this.processor=null;this.input?.disconnect();this.highpass?.disconnect();
   this.media?.getTracks().forEach(track=>track.stop());this.media=null;

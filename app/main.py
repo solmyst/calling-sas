@@ -217,6 +217,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
     attempts = defaultdict(deque)
     responding = set()
     active_responses = {}
+    backchannel_cache = {}
 
     async def speak_for_call(text, call):
         if hasattr(voice, "speech_chunks"):
@@ -622,6 +623,31 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             if active["task"]:
                 active["task"].cancel()
         return {"interrupted": True, "request_id": body.request_id}
+
+    @app.post("/api/calls/{id}/voice/backchannel")
+    async def voice_backchannel(id: str):
+        if not hasattr(voice, "speech_chunks"):
+            raise HTTPException(409, "Backchannel audio requires streaming speech configuration.")
+        with store.transaction() as db:
+            c = require(db, "calls", id)
+            if c["mode"] != "browser" or c["status"] != "in_progress":
+                raise HTTPException(409, "This browser voice session has ended.")
+        voice.require_ready()
+        agent = c["agent_snapshot"]
+        language = agent.get("language", "English")
+        delivery = agent.get("delivery", "warm")
+        key = (language, delivery)
+        audio = backchannel_cache.get(key)
+        if audio is None:
+            phrase = {"Hindi": "जी।", "Hinglish": "Ji.", "English": "Right."}.get(language, "Right.")
+            chunks = []
+            async for chunk in voice.speech_chunks(phrase, language, delivery):
+                chunks.append(chunk)
+            audio = b"".join(chunks)
+            if not audio or len(audio) > 192_000:
+                raise HTTPException(503, "Backchannel voice is unavailable.")
+            backchannel_cache[key] = audio
+        return {"audio": base64.b64encode(audio).decode(), "sample_rate": 24000}
 
     @app.post("/api/calls/{id}/voice/respond/stream")
     async def voice_respond_stream(id: str, body: VoiceText):

@@ -8,6 +8,7 @@ Measured on 4 November 2026 from the local browser-voice backend in India, using
 - Open the Gnani TTS WebSocket while Gemini generates the reply. The complete Gemini response is still used, so response quality and guardrails are unchanged.
 - Avoid sending recent customer turns twice as both memory and conversation history. Older conversation memory remains available outside the recent 20-turn window.
 - Explicitly request Gemini's `minimal` reasoning level. Gemini 3 cannot fully disable thinking; `minimal` is its documented lowest-latency setting.
+- Prefetch a short same-voice acknowledgement while the opening plays. If a response still has not arrived after 650 ms, the browser uses it as a conversational backchannel while Gemini and Gnani continue in parallel. It is limited to alternating turns and suppressed for opt-outs.
 
 The representative support turn improved from a 2,429 ms median to first audio to 1,682 ms after the connection changes, approximately 31% faster. Explicit `minimal` reasoning reduced the model-only benchmark from 1,505 ms to 1,161 ms median in a four-run comparison.
 

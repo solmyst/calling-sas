@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a prefetched, language-matched Gnani backchannel to cover slow-response gaps without delaying model generation or polluting transcripts.
 - Constrained Gemini voice replies to the documented `minimal` reasoning level and reinforced final opt-out and no-tool checks.
 - Reduced browser-call response latency by reusing model connections and preparing Gnani speech generation in parallel with Gemini.
 - Removed duplicate recent transcript content from model requests while retaining older session memory.

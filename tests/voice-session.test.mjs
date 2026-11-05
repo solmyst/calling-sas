@@ -126,3 +126,31 @@ test('reconnected speech streams can reuse provider turn numbers',async()=>{
   await session.close();globalThis.WebSocket=previousSocket;globalThis.location=previousLocation;
  }
 });
+
+test('a prefetched backchannel fills a slow response gap without replacing the reply',async()=>{
+ const events=[{type:'reply',call:{id:'call-one',transcript:[]}},{type:'audio',audio,sample_rate:24000},{type:'complete'}];
+ const {session,created}=setup(async()=>{
+  await new Promise(resolve=>setTimeout(resolve,30));
+  return new Response(events.map(x=>JSON.stringify(x)+'\n').join(''),{status:200});
+ });
+ session.backchannel={audio,sample_rate:24000};session.backchannelDelay=5;
+ session.queue.push('Please help with my appointment');
+ await session.drain();
+ assert.equal(created.length,2);
+ assert.equal(session.backchannelTurns,1);
+ await session.close();
+});
+
+test('backchannel is skipped when the customer opts out',async()=>{
+ const events=[{type:'reply',call:{id:'call-one',transcript:[]}},{type:'audio',audio,sample_rate:24000},{type:'complete'}];
+ const {session,created}=setup(async()=>{
+  await new Promise(resolve=>setTimeout(resolve,20));
+  return new Response(events.map(x=>JSON.stringify(x)+'\n').join(''),{status:200});
+ });
+ session.backchannel={audio,sample_rate:24000};session.backchannelDelay=5;
+ session.queue.push('Stop calling me, I am not interested');
+ await session.drain();
+ assert.equal(created.length,1);
+ assert.equal(session.backchannelTurns,0);
+ await session.close();
+});
