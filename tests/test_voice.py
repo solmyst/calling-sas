@@ -87,6 +87,7 @@ class VoiceTests(unittest.TestCase):
             {
                 "BIFROST_URL": "",
                 "BIFROST_MODELS": "",
+                "BIFROST_REASONING_EFFORT": "",
                 "ELEVENLABS_MODEL": "",
                 "ELEVENLABS_VOICE_ID": "",
             },
@@ -94,6 +95,7 @@ class VoiceTests(unittest.TestCase):
         ):
             config = VoiceConfig.from_env()
         self.assertEqual(config.bifrost_url, "https://bifrost.parkplus.io/v1")
+        self.assertEqual(config.reasoning_effort, "minimal")
         self.assertEqual(config.elevenlabs_model, "eleven_flash_v2_5")
         self.assertEqual(config.elevenlabs_voice, "EXAVITQu4vr4xnSDxMaL")
         self.assertNotEqual(config.elevenlabs_voice, "21m00Tcm4TlvDq8ikWAM")
@@ -140,6 +142,11 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(bifrost.headers["x-bf-vk"], "bifrost-secret")
         model_request = json.loads(bifrost.content)
         self.assertEqual(model_request["model"], "gemini/test-model")
+        self.assertEqual(model_request["reasoning_effort"], "minimal")
+        self.assertIn(
+            "If the customer opts out, acknowledge and end immediately",
+            " ".join(model_request["messages"][0]["content"].split()),
+        )
         serialized_messages = json.dumps(model_request["messages"])
         self.assertEqual(serialized_messages.count("Tell me more."), 1)
         eleven = seen[1]

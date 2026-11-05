@@ -110,7 +110,7 @@ BIFROST_MODELS=
 | `GNANI_VOICE` | A voice compatible with the selected TTS model; currently configured server-wide |
 | `GNANI_SILENCE_MS` | Recognition endpointing setting; tune through evaluation rather than assuming lower is better |
 | `GNANI_SPEED`, `GNANI_AUDIO_TAGS` | Synthesis speed and optional delivery tags |
-| `BIFROST_URL`, `BIFROST_VK`, `BIFROST_MODELS` | Approved conversation gateway URL, virtual key and model ID; also used for optional request extraction |
+| `BIFROST_URL`, `BIFROST_VK`, `BIFROST_MODELS`, `BIFROST_REASONING_EFFORT` | Approved conversation gateway URL, virtual key and model ID; reasoning defaults to `minimal` for lower-latency voice replies |
 | `PORT`, `PUBLIC_ORIGIN` | Listening port and exact browser origin; change them together |
 | `DATABASE_PATH` | SQLite file; defaults to `runtime/relay.sqlite` |
 | `DEMO_PASSWORD` | Optional shared workspace password locally; required in hosted mode |
