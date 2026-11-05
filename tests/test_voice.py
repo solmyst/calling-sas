@@ -144,14 +144,52 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(model_request["model"], "gemini/test-model")
         self.assertEqual(model_request["reasoning_effort"], "minimal")
         self.assertIn(
-            "If the customer opts out, acknowledge and end immediately",
+            "If the customer opts out, reply exactly",
             " ".join(model_request["messages"][0]["content"].split()),
         )
+        self.assertIn("Never request card digits", model_request["messages"][0]["content"])
+        self.assertIn("without claiming it was recorded", model_request["messages"][0]["content"])
         serialized_messages = json.dumps(model_request["messages"])
         self.assertEqual(serialized_messages.count("Tell me more."), 1)
         eleven = seen[1]
         self.assertEqual(eleven.headers["xi-api-key"], "voice-secret")
         self.assertIn("voice-id", str(eleven.url))
+
+    def test_groq_provider_uses_backend_bearer_auth_and_disables_reasoning(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(
+                200, json={"choices": [{"message": {"content": "A short safe reply."}}]}
+            )
+
+        config = VoiceConfig(
+            assemblyai_key="stt-secret", bifrost_key="", bifrost_url="https://gateway.example/v1",
+            bifrost_model="", elevenlabs_key="voice-secret", elevenlabs_voice="voice-id",
+            elevenlabs_model="eleven_flash_v2_5", llm_provider="groq",
+            groq_key="groq-secret", groq_model="qwen/qwen3.8-27b",
+        )
+        engine = VoiceEngine(
+            config=config, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        )
+        call = {
+            "agent_snapshot": {"name": "Mira", "prompt": "Be concise.", "context": "Approved facts."},
+            "transcript": [{"role": "customer", "text": "Help me."}],
+        }
+
+        import asyncio
+        reply = asyncio.run(engine.reply(call))
+        asyncio.run(engine._client.aclose())
+
+        self.assertEqual(reply, "A short safe reply.")
+        request = seen[0]
+        self.assertEqual(request.url.host, "api.groq.com")
+        self.assertEqual(request.headers["authorization"], "Bearer groq-secret")
+        self.assertNotIn("x-bf-vk", request.headers)
+        payload = json.loads(request.content)
+        self.assertEqual(payload["model"], "qwen/qwen3.8-27b")
+        self.assertEqual(payload["reasoning_effort"], "none")
 
     def test_browser_voice_turn_persists_transcript_and_returns_audio(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -61,22 +61,24 @@ class GnaniConfig:
 
 
 class GnaniVoiceEngine(VoiceEngine):
-    providers = {"stt": "Gnani Prisma", "llm": "Bifrost", "tts": "Gnani Timbre"}
     streaming_stt_url = "wss://api.vachana.ai/stt/v3/stream"
     audio_content_type = "audio/wav"
 
     def __init__(self, config=None, client=None, gnani_config=None):
         super().__init__(config, client)
         self.gnani = gnani_config or GnaniConfig.from_env()
+        self.providers.update(stt="Gnani Prisma", tts="Gnani Timbre")
 
     @property
     def ready(self):
         return all((self.gnani.api_key, self.gnani.voice, self.gnani.tts_model,
-                    self.config.bifrost_key, self.config.bifrost_model))
+                    self.llm_ready))
 
     def require_ready(self):
         if not self.ready:
-            raise VoiceConfigurationError("Browser voice needs GNANI_API_KEY and Bifrost configuration.")
+            raise VoiceConfigurationError(
+                "Browser voice needs GNANI_API_KEY and a configured conversation model."
+            )
 
     def streaming_stt_url_for(self, language):
         return self.streaming_stt_url
