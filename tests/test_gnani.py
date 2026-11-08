@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import httpx
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.gnani import GnaniConfig, GnaniVoiceEngine, browser_wav
 from app.main import create_app
@@ -20,7 +21,7 @@ from app.voice import VoiceConfig, VoiceConfigurationError, VoiceProviderError
 
 def engine(client=None, key="test-only", tags=False):
     return GnaniVoiceEngine(
-        VoiceConfig("", "test-bifrost", "https://gateway.example/v1", "test-model", "", "", ""),
+        VoiceConfig("test-bifrost", "https://gateway.example/v1", "test-model"),
         client, GnaniConfig(api_key=key, audio_tags=tags),
     )
 
@@ -195,6 +196,17 @@ class GnaniTests(unittest.TestCase):
         self.assertEqual(json.loads(response.text.splitlines()[-1])["type"], "error")
         self.assertIs(voice.closed_connection, voice.connection)
 
+    def test_browser_opt_out_marks_contact_do_not_call(self):
+        for phrase in ("Please remove me from your list", "मुझे कॉल मत करो"):
+            with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}):
+                with TestClient(create_app(temp + "/db.sqlite", voice_engine=FakeStreamingVoice())) as c:
+                    call = c.post("/api/calls", json={"agent_id": "demo-booking", "contact_id": "contact-1", "mode": "browser"}).json()
+                    path = f"/api/calls/{call['id']}"
+                    c.post(path + "/voice/respond/stream", json={"text": phrase})
+                    self.assertEqual(c.post(path + "/end").json()["outcome"], "opted_out", phrase)
+                    contact = next(x for x in c.get("/api/state").json()["contacts"] if x["id"] == "contact-1")
+                    self.assertTrue(contact["do_not_call"], phrase)
+
     def test_tts_failure_keeps_generated_transcript_and_releases_session(self):
         self._stream_flow(fail_audio=True)
 
@@ -228,3 +240,39 @@ class GnaniTests(unittest.TestCase):
                 self.assertEqual(ended["outcome"], "follow_up")
                 self.assertIn("No external action", ended["summary"])
                 self.assertEqual(c.post(path + "/voice/respond/stream", json={"text": "again"}).status_code, 409)
+
+    def test_idle_speech_stream_closes_with_resume_code(self):
+        class SilentUpstream:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def send(self, chunk):
+                pass
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                await asyncio.Event().wait()
+
+        class StreamingVoice(FakeStreamingVoice):
+            streaming_stt_url = "wss://stt.example/stream"
+
+            def streaming_headers(self, language):
+                return {}
+
+            def stream_event(self, message):
+                return None
+
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}), \
+                patch("app.main.websocket_connect", lambda *a, **k: SilentUpstream()), \
+                patch("app.main.STREAM_IDLE_SECONDS", 0.05):
+            with TestClient(create_app(temp + "/db.sqlite", voice_engine=StreamingVoice(), vad_factory=lambda: None)) as c:
+                call = c.post("/api/calls", json={"agent_id": "demo-booking", "contact_id": "contact-1", "mode": "browser"}).json()
+                with c.websocket_connect(f"/api/calls/{call['id']}/voice/stream") as ws:
+                    with self.assertRaises(WebSocketDisconnect) as closed:
+                        ws.receive_json()
+        self.assertEqual(closed.exception.code, 4408)

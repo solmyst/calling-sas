@@ -21,7 +21,7 @@ const liveVoice=new VoiceSession({
  onStatus:message=>{const el=$('#voice-live-status');if(el)el.textContent=message;},
  onError:message=>toast(message),
 });
-async function startVoiceSession(){await liveVoice.start(currentCall,data.settings);}
+async function startVoiceSession(){await liveVoice.start(currentCall);}
 function search(input,type){const pos=input.selectionStart;query=input.value;render();const el=$('#'+type+'-search');el.focus();el.setSelectionRange(pos,pos)}
 function bind(){
  document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>safely(()=>action(b.dataset.action),b));
@@ -63,7 +63,7 @@ async function showCall(id){
  const outcomeLabel=c.mode==='demo'&&c.outcome==='confirmed'?'Simulated confirmation':c.outcome||c.status;
  const d=dialog(`<h2>Conversation details</h2><p class="subtitle">${esc(c.contact_snapshot.name)} with ${esc(c.agent_snapshot.name)} · ${date(c.started_at)}</p><div class="call-meta">${badge(c.mode==='browser'?'Browser voice':'Simulated')}${badge(c.source==='seed'?'Seeded example':c.source)}${badge(outcomeLabel,c.outcome||'')}</div><div class="call-summary"><strong>${esc(c.summary||'Conversation in progress.')}</strong><p>Next step: ${esc(c.next_action||'Continue the simulation')}</p></div><div id="request-review"></div><h3 class="section-space">Conversation transcript</h3><div class="transcript">${V.transcript(c)}</div><div class="actions"><a class="button" href="${basePath}/api/calls/${c.id}/export" download>${icon('download')}Export transcript</a> <button class="button" id="play-transcript">${icon('volume')}Listen locally</button>${c.status==='in_progress'?` <button class="button primary" id="resume-call">Resume</button>`:''}</div><p class="form-help" id="voice-status">Optional on-device browser voice. No recorded audio or live call.</p><details class="snapshot"><summary>Session memory · customer-provided notes</summary><ol>${(c.memory?.customer_notes||[]).map(n=>`<li>${esc(n.text)}</li>`).join('')||'<li>No customer details recorded yet.</li>'}</ol></details><details class="snapshot"><summary>Agent configuration at the time of this call</summary><pre>${esc('Use case: '+title(c.agent_snapshot.use_case)+'\n\nSystem prompt (stored, not interpreted in offline demo):\n'+c.agent_snapshot.prompt+'\n\nBusiness context:\n'+c.agent_snapshot.context)}</pre></details>`);
  mountRequestReview($('#request-review',d),c,requestInfo,api,()=>{refresh().catch(e=>toast(e.message));});
- if($('#resume-call',d))$('#resume-call',d).onclick=()=>safely(async()=>{await liveVoice.close();currentCall=c;selectedAgent=c.agent_id;d.close();navigate('studio');if(c.mode==='browser')await liveVoice.start(c,data.settings,true);});
+ if($('#resume-call',d))$('#resume-call',d).onclick=()=>safely(async()=>{await liveVoice.close();currentCall=c;selectedAgent=c.agent_id;d.close();navigate('studio');if(c.mode==='browser')await liveVoice.start(c,true);});
  let speaking=false;
  $('#play-transcript',d).onclick=()=>{
   if(!('speechSynthesis' in window)){$('#voice-status').textContent='This browser does not support voice playback.';return}

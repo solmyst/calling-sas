@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Browser-session opt-out detection now uses the same phrases as the simulator, including "remove me" and "opt out", with Hindi phrases shared both ways.
+- `startup.sh` refuses local mode and no longer trusts client-supplied `X-Forwarded-For`, which bypassed the login rate limit.
+- Removed the AssemblyAI/ElevenLabs speech path, `SPEECH_PROVIDER`, `/voice/turn` and non-streaming `/voice/respond`. Gnani is always used.
+- Live microphone streams send no audio while paused and close after 10 minutes without detected speech (close code 4408); resuming reconnects.
+- Removed the never-imported `optional/voice/voice_gate.py` and unused engine symbols.
+- Simulated-turn retries cache only the call ID instead of a full call copy per turn.
 - Added automatic Groq-to-Gemini failover for rate limits and transient capacity failures, with a cooldown circuit and per-stage ASR, LLM, and TTS timing.
 - Reduced the measured Gnani speech-end setting from 600 ms to 500 ms after a live synthetic comparison lowered final-transcript wait by about 215 ms across English and Hindi samples.
 - Added a selectable Groq Qwen conversation backend with non-reasoning dialogue mode, backend-only authentication, and explicit Gemini configuration fallback.

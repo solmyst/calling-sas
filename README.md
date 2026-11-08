@@ -87,7 +87,6 @@ Use the root `.env` for local settings. It is Git-ignored. Shell environment var
 ### Live voice with Gnani
 
 ```dotenv
-SPEECH_PROVIDER=gnani
 GNANI_API_KEY=
 GNANI_STT_MODEL=prisma-v3.0
 GNANI_TTS_MODEL=timbre-v3.0
@@ -104,7 +103,6 @@ BIFROST_MODELS=
 
 | Setting | Purpose |
 |---|---|
-| `SPEECH_PROVIDER` | `gnani` selects the Gnani speech adapters; `legacy` selects the AssemblyAI/ElevenLabs path |
 | `GNANI_API_KEY` | Server-side speech recognition and synthesis authentication |
 | `GNANI_STT_MODEL`, `GNANI_TTS_MODEL` | Speech model IDs supported by the account |
 | `GNANI_VOICE` | A voice compatible with the selected TTS model; currently configured server-wide |
@@ -119,7 +117,7 @@ BIFROST_MODELS=
 | `SESSION_SECRET` | Session-signing secret; required in hosted mode |
 | `APP_ENV`, `HOST` | Local/hosted behavior and bind address; see deployment documentation |
 
-The legacy speech path uses `ASSEMBLYAI_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL`, alongside the same conversation gateway. Selecting Gnani never silently falls back to another paid speech provider. See [.env.example](.env.example) and [detailed Gnani setup](docs/GNANI-DEMO.md).
+Gnani is the only speech provider. Missing Gnani credentials disable browser voice; there is no fallback to another paid speech provider. A live microphone stream closes after 10 minutes without detected speech and resumes when the operator unpauses it. See [.env.example](.env.example) and [detailed Gnani setup](docs/GNANI-DEMO.md).
 
 Speech, model and optional extraction requests can incur provider charges. No API credits, provider account rights or production capacity are included with the repository. Manual request entry and typed simulation do not need model credentials.
 

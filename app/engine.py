@@ -2,16 +2,13 @@
 
 import re
 from datetime import datetime, timezone
-from typing import Protocol
 from .reused.redaction import redact
 from .reused.voicemail import is_voicemail_announcement
 
-USE_CASES = (
-    "lead_qualification",
-    "appointment_reminder",
-    "customer_support",
-    "follow_up",
-    "sales",
+# One opt-out rule for simulated turns and saved browser sessions.
+OPT_OUT = re.compile(
+    r"do not call|don't call|stop calling|unsubscribe|remove me|opt out|कॉल मत|फोन मत",
+    re.I,
 )
 ENDINGS = {
     "lead_qualification": "qualified",
@@ -51,11 +48,6 @@ def render(text, agent, contact):
     return text
 
 
-class CallingProvider(Protocol):
-    def start(self, agent: dict, contact: dict) -> list[dict]: ...
-    def turn(self, call: dict, text: str) -> dict: ...
-
-
 class LiveCallingDisabled:
     def start(self, *args, **kwargs):
         raise PermissionError(
@@ -72,9 +64,7 @@ class DemoProvider:
         call["transcript"].append(line("customer", text))
         t = text.lower().strip()
         outcome = None
-        if re.search(
-            r"do not call|don't call|stop calling|unsubscribe|remove me|opt out", t
-        ):
+        if OPT_OUT.search(t):
             reply = "Understood. I have marked this demo contact as do not call. Thank you for your time."
             outcome = "opted_out"
         elif is_voicemail_announcement(text):

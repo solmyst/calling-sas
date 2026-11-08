@@ -62,12 +62,11 @@ class GnaniConfig:
 
 class GnaniVoiceEngine(VoiceEngine):
     streaming_stt_url = "wss://api.vachana.ai/stt/v3/stream"
-    audio_content_type = "audio/wav"
 
     def __init__(self, config=None, client=None, gnani_config=None):
         super().__init__(config, client)
         self.gnani = gnani_config or GnaniConfig.from_env()
-        self.providers.update(stt="Gnani Prisma", tts="Gnani Timbre")
+        self.providers = {"stt": "Gnani Prisma", "llm": self.providers["llm"], "tts": "Gnani Timbre"}
 
     @property
     def ready(self):
@@ -79,9 +78,6 @@ class GnaniVoiceEngine(VoiceEngine):
             raise VoiceConfigurationError(
                 "Browser voice needs GNANI_API_KEY and a configured conversation model."
             )
-
-    def streaming_stt_url_for(self, language):
-        return self.streaming_stt_url
 
     def streaming_headers(self, language):
         return {
@@ -113,11 +109,6 @@ class GnaniVoiceEngine(VoiceEngine):
                     "end_of_turn": True, "turn_order": event.get("segment_id") or event.get("segment_index"),
                     "stt_ms": event.get("latency")}
         return None
-
-    async def transcribe(self, audio, content_type):
-        # Live sessions use the documented streaming PCM protocol, never a hidden
-        # fallback to a different speech provider or an invented REST schema.
-        raise VoiceProviderError("Gnani sessions use realtime microphone streaming. Restart the voice session.")
 
     def synthesis_payload(self, text, language="English", container="wav", delivery="neutral"):
         # Expression belongs to speech rendering, not the saved customer transcript.

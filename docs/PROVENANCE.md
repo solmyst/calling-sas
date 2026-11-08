@@ -7,7 +7,7 @@ No third-party license rights are expanded by that confirmation. The original ma
 | Original path | Product path | SHA-256 (both files) | Use |
 |---|---|---|---|
 | `redaction.py` | `app/reused/redaction.py` | `e895f0b40263735f1f457e4b51b1ef8a1691a1394696be0e387dae704cb6498f` | Active transcript privacy filter |
-| `voicebot/server/voice_gate.py` | `optional/voice/voice_gate.py` | `eaf331d4207e8842ccb58ec8f00cdb28944d7dc49f5e070cfb089f11d0a3cd96` | Preserved optional component, not imported by demo |
+| `voicebot/server/voice_gate.py` | `optional/voice/voice_gate.py` | `eaf331d4207e8842ccb58ec8f00cdb28944d7dc49f5e070cfb089f11d0a3cd96` | Removed 8 November 2026: never imported; Silero VAD (`app/vad.py`) handles speech detection. Recoverable from git history. |
 
 These two files are exact, unmodified copies. No secrets or external service calls were found in them. The remainder of this product is newly authored code and synthetic demo content.
 

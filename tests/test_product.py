@@ -79,6 +79,14 @@ class ProductTests(unittest.TestCase):
         b = self.start(request_id="same-request").json()
         self.assertEqual(a["id"], b["id"])
 
+    def test_retried_turn_is_applied_once(self):
+        c = self.start().json()
+        body = {"text": "Yes, happy to talk", "request_id": "turn-1"}
+        first = self.client.post(f"/api/calls/{c['id']}/turn", json=body).json()
+        retry = self.client.post(f"/api/calls/{c['id']}/turn", json=body).json()
+        self.assertEqual(len(retry["transcript"]), len(first["transcript"]))
+        self.assertEqual(retry["id"], c["id"])
+
     def test_consent_and_validation(self):
         contact = self.client.post("/api/contacts", json={
             "name": "Consent pending", "phone": "+919999999999",

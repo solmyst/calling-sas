@@ -5,7 +5,7 @@ import {VoiceSession} from '../static/voice-session.js';
 function setup(fetchImpl=async()=>{throw new Error('Unexpected request');}){
  const calls=[],statuses=[],created=[];
  const session=new VoiceSession({api:async(...args)=>calls.push(args),onStatus:x=>statuses.push(x),fetchImpl});
- session.closed=false;session.call={id:'call-one'};session.streaming=true;session.paused=false;
+ session.closed=false;session.call={id:'call-one'};session.paused=false;
  session.context={currentTime:1,destination:{},close:async()=>{},
   createBuffer:(_,size,rate)=>({duration:size/rate,getChannelData:()=>new Float32Array(size)}),
   createBufferSource:()=>{const source={connect(){},start(){},stop(){source.stopped=true;}};created.push(source);return source;},
@@ -169,4 +169,19 @@ test('backchannel is skipped when the customer opts out',async()=>{
  assert.equal(created.length,1);
  assert.equal(session.backchannelTurns,0);
  await session.close();
+});
+
+test('server idle close pauses the microphone instead of reconnecting',async()=>{
+ const {session,statuses}=setup();
+ const previous={WebSocket:globalThis.WebSocket,location:globalThis.location};let socket;
+ globalThis.location={protocol:'http:',host:'test'};
+ globalThis.WebSocket=class{constructor(){socket=this;this.readyState=1;} send(){} close(){}};
+ try{
+  const connected=session.connect();
+  socket.onmessage({data:JSON.stringify({type:'ready'})});await connected;
+  socket.onclose({code:4408});
+  assert.equal(session.paused,true);
+  assert.equal(session.reconnectTimer,undefined);
+  assert.match(statuses.at(-1),/without speech/);
+ }finally{Object.assign(globalThis,previous);await session.close();}
 });

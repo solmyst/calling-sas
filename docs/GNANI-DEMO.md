@@ -6,7 +6,6 @@ Put dedicated credentials in the root `.env` (ignored by Git). Never put these i
 the static site, browser JavaScript, screenshot or a commit.
 
 ```dotenv
-SPEECH_PROVIDER=gnani
 GNANI_API_KEY=
 GNANI_STT_MODEL=prisma-v3.0
 GNANI_TTS_MODEL=timbre-v3.0
@@ -26,9 +25,8 @@ Gnani supplies speech recognition and synthesis; Bifrost still supplies the LLM.
 Both require valid accounts/credits and network access from the backend. Charges
 depend on your account agreement; no price or concurrency guarantee is assumed.
 
-`SPEECH_PROVIDER=legacy` retains the existing AssemblyAI/ElevenLabs integration.
-Selecting `gnani` with missing credentials disables browser voice; it never silently
-falls back to another paid provider.
+The AssemblyAI/ElevenLabs path was removed on 8 November 2026. Missing Gnani
+credentials disable browser voice; there is no fallback to another paid provider.
 
 Start with `python run.py`, open `/#demos`, choose an experience, then select Live
 browser voice. Production uses the existing `/relay/` prefix and HTTPS. After

@@ -12,8 +12,8 @@ export class VoiceSession {
   this.playing=active;
   if(this.socket?.readyState===1)this.socket.send(JSON.stringify({type:'playback',active}));
  }
- async start(call,settings,resume=false){
-  await this.close();this.closed=false;this.call=call;this.streaming=settings.streaming_audio;
+ async start(call,resume=false){
+  await this.close();this.closed=false;this.call=call;
   this.paused=false;this.queue=[];this.seen.clear();this.reconnects=0;this.interruptAck=Promise.resolve();
   if(!navigator.mediaDevices?.getUserMedia||!globalThis.AudioWorkletNode)throw new Error('Use a current browser with microphone and AudioWorklet support.');
   try{
@@ -26,11 +26,12 @@ export class VoiceSession {
    this.highpass=this.context.createBiquadFilter();this.highpass.type='highpass';this.highpass.frequency.value=85;
    this.input.connect(this.highpass);this.highpass.connect(this.processor);this.processor.connect(this.context.destination);
    this.processor.port.onmessage=event=>{
-    if(this.socket?.readyState!==1)return;
+    // Paused sends nothing: streamed audio is billed, even silence.
+    if(this.paused||this.socket?.readyState!==1)return;
     if(this.socket.bufferedAmount>64000){this.socket.close();return;}
     // Keep real microphone audio flowing during AI speech: AEC/NS clean it,
     // Silero confirms speech, and Gnani keeps the beginning of the utterance.
-    this.socket.send(this.paused?new ArrayBuffer(1024):event.data);
+    this.socket.send(event.data);
    };
    this.loadBackchannel();
    await this.connect();if(resume)this.status('Conversation restored. Listening…');else await this.opening();
@@ -51,15 +52,19 @@ export class VoiceSession {
     }catch{this.status('Speech recognition sent an invalid event. Please restart the session.');}
    };
    socket.onerror=()=>{if(!ready){clearTimeout(timeout);reject(new Error('Speech recognition could not connect.'));}};
-   socket.onclose=()=>{
+   socket.onclose=event=>{
     clearTimeout(timeout);
     if(!ready)reject(new Error('Speech recognition disconnected.'));
-    if(this.socket===socket&&!this.closed){this.status('Reconnecting microphone…');this.retryConnection();}
+    if(this.socket!==socket||this.closed)return;
+    // 4408: server closed an idle stream. Stay paused until the operator resumes.
+    if(event.code===4408){this.paused=true;this.interrupt();this.status('Microphone paused after 10 minutes without speech. Resume to continue.');return;}
+    if(this.paused)return;
+    this.status('Reconnecting microphone…');this.retryConnection();
    };
   });
  }
  retryConnection(){
-  if(this.closed||this.reconnectTimer)return;
+  if(this.closed||this.paused||this.reconnectTimer)return;
   if(this.reconnects>=2){this.status('Speech recognition disconnected. End and restart the session.');return;}
   const delay=500*2**this.reconnects++;
   this.reconnectTimer=setTimeout(async()=>{
@@ -157,18 +162,17 @@ export class VoiceSession {
    },this.backchannelDelay);
   }
   try{
-   const response=await this.fetchImpl(`${this.basePath}/api/calls/${this.call.id}/voice/respond${this.streaming?'/stream':''}`,{
+   const response=await this.fetchImpl(`${this.basePath}/api/calls/${this.call.id}/voice/respond/stream`,{
     method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,request_id:requestId,asr_ms:asrMs,stt_provider_ms:sttProviderMs}),signal:controller.signal,
    });
    if(!response.ok)throw new Error('The AI could not respond. Please retry or restart the session.');
-   if(this.streaming)await this.readStream(response,epoch);
-   else{const value=await response.json();if(this.isCurrent(epoch)){this.call=value.call;this.onCall(value.call);await this.playFile(value.audio,value.content_type,epoch);}}
+   await this.readStream(response,epoch);
   }catch(error){
    if(this.isCurrent(epoch)&&error.name!=='AbortError'){
     this.interrupt();this.status(error.message);this.onError(error.message);
    }
   }finally{
-   if(this.isCurrent(epoch)){this.processing=false;this.controller=null;if(this.streaming&&!this.sources.size){this.control(false);this.activeId=null;this.status('Listening… speak naturally.');}}
+   if(this.isCurrent(epoch)){this.processing=false;this.controller=null;if(!this.sources.size){this.control(false);this.activeId=null;this.status('Listening… speak naturally.');}}
   }
  }
  async readStream(response,epoch){
@@ -210,7 +214,14 @@ export class VoiceSession {
  async toggle(){
   this.paused=!this.paused;
   if(this.paused){this.interrupt();this.status('Microphone paused.');}
-  else{await this.context?.resume();this.status('Listening… speak naturally.');this.drain();}
+  else{
+   await this.context?.resume();
+   if(this.socket?.readyState!==1){
+    this.status('Reconnecting microphone…');this.reconnects=0;
+    try{await this.connect();}catch{this.retryConnection();return;}
+   }
+   this.status('Listening… speak naturally.');this.drain();
+  }
  }
  async replayOpening(){this.interrupt();await this.interruptAck;await this.opening();}
  async close(){

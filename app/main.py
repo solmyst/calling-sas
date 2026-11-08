@@ -12,13 +12,17 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .store import Store
-from .engine import DemoProvider, LiveCallingDisabled, now, private
+from .engine import OPT_OUT, DemoProvider, LiveCallingDisabled, now, private
 from .seed import seed
-from .voice import VoiceConfigurationError, VoiceEngine, VoiceProviderError
+from .voice import VoiceConfigurationError, VoiceProviderError
 from .memory import update_memory
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env", override=False)
+# Streaming speech recognition is billed per audio minute. Close a microphone
+# stream after this long without detected speech; the browser can resume it.
+STREAM_IDLE_SECONDS = 600
+STREAM_IDLE_CLOSE_CODE = 4408
 
 
 class Model(BaseModel):
@@ -196,11 +200,9 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
     provider = DemoProvider()
     if voice_engine is not None:
         voice = voice_engine
-    elif os.getenv("SPEECH_PROVIDER", "legacy").strip().lower() == "gnani":
+    else:
         from .gnani import GnaniVoiceEngine
         voice = GnaniVoiceEngine()
-    else:
-        voice = VoiceEngine()
     @asynccontextmanager
     async def lifespan(_app):
         yield
@@ -220,12 +222,6 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
     responding = set()
     active_responses = {}
     backchannel_cache = {}
-
-    async def speak_for_call(text, call):
-        if hasattr(voice, "speech_chunks"):
-            agent = call["agent_snapshot"]
-            return await voice.speak(text, agent.get("language", "English"), agent.get("delivery", "warm"))
-        return await voice.speak(text)
 
     def valid(token):
         try:
@@ -257,8 +253,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                 return JSONResponse(
                     {"detail": "Invalid content length"}, status_code=400
                 )
-            limit = 8_000_000 if "/voice/turn" in request.url.path else 64000
-            if size > limit:
+            if size > 64000:
                 return JSONResponse({"detail": "Request too large"}, status_code=413)
         if (
             request.url.path.startswith("/api/")
@@ -344,7 +339,6 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             "conversation_engine": " + ".join(voice.providers.values()) if voice.ready else "Offline simulator",
             "ai_connected": voice.ready,
             "voice_providers": voice.providers,
-            "streaming_audio": hasattr(voice, "speech_chunks"),
             "automatic_barge_in": True,
             "vad": "Silero v5",
             "memory_scope": "conversation",
@@ -477,47 +471,12 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             c = require(db, "calls", id)
         if c["mode"] != "browser":
             raise HTTPException(409, "This is not a browser voice session.")
+        agent = c["agent_snapshot"]
         try:
-            audio = await speak_for_call(c["transcript"][0]["text"], c)
+            audio = await voice.speak(c["transcript"][0]["text"], agent.get("language", "English"), agent.get("delivery", "warm"))
         except (VoiceConfigurationError, VoiceProviderError) as e:
             raise HTTPException(503, str(e))
-        return {"audio": base64.b64encode(audio).decode(), "content_type": getattr(voice, "audio_content_type", "audio/mpeg")}
-
-    @app.post("/api/calls/{id}/voice/turn")
-    async def voice_turn(id: str, request: Request):
-        content_type = request.headers.get("content-type", "").split(";", 1)[0]
-        if content_type not in ("audio/webm", "audio/mp4", "audio/ogg"):
-            raise HTTPException(415, "Unsupported browser audio format.")
-        audio = await request.body()
-        if not audio or len(audio) > 8_000_000:
-            raise HTTPException(413 if audio else 400, "Microphone audio is empty or too large.")
-        with store.transaction() as db:
-            c = require(db, "calls", id)
-            if c["mode"] != "browser" or c["status"] != "in_progress":
-                raise HTTPException(409, "This browser voice session has ended.")
-        try:
-            customer_text = private(await voice.transcribe(audio, content_type))
-            c["transcript"].append({"role": "customer", "text": customer_text, "at": now()})
-            update_memory(c)
-            assistant_text = private(await voice.reply(c))
-            generated_audio = await speak_for_call(assistant_text, c)
-        except (VoiceConfigurationError, VoiceProviderError, ValueError) as e:
-            raise HTTPException(503, str(e))
-        c["transcript"].append({"role": "agent", "text": assistant_text, "at": now()})
-        with store.transaction() as db:
-            latest = require(db, "calls", id)
-            if latest["status"] != "in_progress":
-                raise HTTPException(409, "This browser voice session has ended.")
-            latest["transcript"] = c["transcript"]
-            update_memory(latest)
-            Store.put(db, "calls", latest)
-        return {
-            "call": latest,
-            "transcript": customer_text,
-            "reply": assistant_text,
-            "audio": base64.b64encode(generated_audio).decode(),
-            "content_type": getattr(voice, "audio_content_type", "audio/mpeg"),
-        }
+        return {"audio": base64.b64encode(audio).decode(), "content_type": "audio/wav"}
 
     @app.websocket("/api/calls/{id}/voice/stream")
     async def voice_stream(websocket: WebSocket, id: str):
@@ -539,12 +498,13 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             vad = await asyncio.to_thread(vad_factory or SileroVad)
             await websocket.accept()
             async with websocket_connect(
-                voice.streaming_stt_url_for(c["agent_snapshot"].get("language", "English")),
+                voice.streaming_stt_url,
                 additional_headers=voice.streaming_headers(c["agent_snapshot"].get("language", "English")),
                 compression=None,
                 open_timeout=10,
             ) as upstream:
                 playback = False
+                last_speech = time.monotonic()
                 send_lock = asyncio.Lock()
 
                 async def send_event(event):
@@ -552,7 +512,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                         await websocket.send_json(event)
 
                 async def send_audio():
-                    nonlocal playback
+                    nonlocal playback, last_speech
                     try:
                         while True:
                             incoming = await websocket.receive()
@@ -569,28 +529,36 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                                     raise VoiceProviderError("Invalid microphone frame size.")
                                 event = await asyncio.to_thread(vad.process, chunk, playback)
                                 if event:
+                                    last_speech = time.monotonic()
                                     await send_event(event)
                                 await upstream.send(chunk)
                     except WebSocketDisconnect:
-                        try:
-                            if not hasattr(voice, "speech_chunks"):
-                                await upstream.send('{"type":"Terminate"}')
-                        except Exception:
-                            pass
+                        pass
 
                 async def send_transcripts():
+                    nonlocal last_speech
                     async for message in upstream:
                         event = voice.stream_event(message)
                         if event:
+                            if event.get("type") == "Turn":
+                                last_speech = time.monotonic()
                             await send_event(event)
 
-                tasks = [asyncio.create_task(send_audio()), asyncio.create_task(send_transcripts())]
+                async def idle_watch():
+                    while (left := STREAM_IDLE_SECONDS - (time.monotonic() - last_speech)) > 0:
+                        await asyncio.sleep(min(15, left))
+
+                idle = asyncio.create_task(idle_watch())
+                tasks = [asyncio.create_task(send_audio()), asyncio.create_task(send_transcripts()), idle]
                 done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 for task in pending:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
                 for task in done:
                     task.result()
+                if idle in done:
+                    logging.getLogger("uvicorn.error").info("streaming_stt_idle_closed call_id=%s", id)
+                    await websocket.close(code=STREAM_IDLE_CLOSE_CODE)
         except Exception:
             logging.getLogger("uvicorn.error").warning("streaming_stt_failed call_id=%s", id)
             try:
@@ -628,13 +596,14 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
 
     @app.post("/api/calls/{id}/voice/backchannel")
     async def voice_backchannel(id: str):
-        if not hasattr(voice, "speech_chunks"):
-            raise HTTPException(409, "Backchannel audio requires streaming speech configuration.")
         with store.transaction() as db:
             c = require(db, "calls", id)
             if c["mode"] != "browser" or c["status"] != "in_progress":
                 raise HTTPException(409, "This browser voice session has ended.")
-        voice.require_ready()
+        try:
+            voice.require_ready()
+        except VoiceConfigurationError as exc:
+            raise HTTPException(503, str(exc))
         agent = c["agent_snapshot"]
         language = agent.get("language", "English")
         delivery = agent.get("delivery", "warm")
@@ -653,8 +622,6 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
 
     @app.post("/api/calls/{id}/voice/respond/stream")
     async def voice_respond_stream(id: str, body: VoiceText):
-        if not hasattr(voice, "speech_chunks"):
-            raise HTTPException(409, "Streaming audio requires Gnani speech configuration.")
         with store.transaction() as db:
             c = require(db, "calls", id)
             if c["mode"] != "browser" or c["status"] != "in_progress":
@@ -760,31 +727,6 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         return StreamingResponse(events(), media_type="application/x-ndjson",
                                  headers={"X-Accel-Buffering": "no"})
 
-    @app.post("/api/calls/{id}/voice/respond")
-    async def voice_respond(id: str, body: VoiceText):
-        with store.transaction() as db:
-            c = require(db, "calls", id)
-            if c["mode"] != "browser" or c["status"] != "in_progress":
-                raise HTTPException(409, "This browser voice session has ended.")
-        try:
-            customer_text = private(body.text)
-            c["transcript"].append({"role": "customer", "text": customer_text, "at": now()})
-            update_memory(c)
-            assistant_text = private(await voice.reply(c))
-            generated_audio = await speak_for_call(assistant_text, c)
-        except (VoiceConfigurationError, VoiceProviderError, ValueError) as e:
-            raise HTTPException(503, str(e))
-        c["transcript"].append({"role": "agent", "text": assistant_text, "at": now()})
-        with store.transaction() as db:
-            latest = require(db, "calls", id)
-            if latest["status"] != "in_progress":
-                raise HTTPException(409, "This browser voice session has ended.")
-            latest["transcript"] = c["transcript"]
-            update_memory(latest)
-            Store.put(db, "calls", latest)
-        return {"call": latest, "transcript": customer_text, "reply": assistant_text,
-                "audio": base64.b64encode(generated_audio).decode(), "content_type": getattr(voice, "audio_content_type", "audio/mpeg")}
-
     @app.get("/api/calls/{id}")
     def get_call(id: str):
         with store.transaction() as db:
@@ -796,7 +738,8 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             key = "turn:" + id + ":" + body.request_id
             cached = Store.cached(db, key)
             if cached:
-                return cached
+                # Older rows hold a full call copy; both forms carry "id".
+                return require(db, "calls", cached["id"])
             c = require(db, "calls", id)
             if c["status"] != "in_progress":
                 raise HTTPException(409, "This conversation has ended")
@@ -807,7 +750,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             provider.turn(c, body.text)
             update_memory(c)
             finish(db, c)
-            Store.cache(db, key, c)
+            Store.cache(db, key, {"id": c["id"]})
             return c
 
     @app.post("/api/calls/{id}/end")
@@ -830,7 +773,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                 Store.put(db, "calls", c)
                 if browser and any(t["role"] == "customer" for t in c["transcript"]):
                     customer = " ".join(t["text"] for t in c["transcript"] if t["role"] == "customer").lower()
-                    opted_out = bool(re.search(r"do not call|don't call|stop calling|unsubscribe|कॉल मत|फोन मत", customer))
+                    opted_out = bool(OPT_OUT.search(customer))
                     handoff = bool(re.search(r"\bhuman\b|\bmanager\b|इंसान|किसी व्यक्ति", customer))
                     outcome = "opted_out" if opted_out else "handoff" if handoff else "follow_up"
                     c.update(status="completed", outcome=outcome,

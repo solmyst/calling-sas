@@ -33,7 +33,7 @@ No general SaaS control plane, tenant isolation, customer-facing configuration m
 
 ## Reuse strategy
 1. Active now: exact privacy redactor and extracted voicemail detection from guard_core.py; synthetic data only; tests verify redaction and machine-greeting classification.
-2. Preserved now: exact voice gate in `optional/voice/`, excluded from web startup dependencies.
+2. Previously preserved: exact voice gate in `optional/voice/`. Removed 8 November 2026 because it was never imported; Silero VAD replaced it.
 3. Preserve architectural investment: keep the STT→LLM→TTS worker separate from the SaaS control plane. Extract provider failover, guards and lifecycle into that worker after product requirements and live test accounts are available. See `ARCHITECTURE.md` for the boundary.
 4. Do not copy the monolithic bot and pretend it is portable. Company actions must become injected adapters, internal gateway defaults must be removed, traces must become call-scoped, model availability must be validated, and third-party notices retained.
 

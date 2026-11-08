@@ -40,8 +40,7 @@ document.querySelector('#start').onclick=async()=>{
    },onError:message=>{status.textContent=message;result.textContent='FAILED: '+message;},
   });
   call=await api('/calls','POST',{agent_id:'demo-booking',contact_id:'contact-1',mode:'browser'});
-  const settings=(await api('/state')).settings;
   timeout=setTimeout(async()=>{result.textContent='FAILED: timed out';await session.close();await context.close();},45000);
-  await session.start(call,settings);
+  await session.start(call);
  }catch(error){clearTimeout(timeout);result.textContent='FAILED: '+error.message;await session?.close();if(context&&context.state!=='closed')await context.close();}
 };

@@ -46,7 +46,7 @@ async def main():
         import struct
         pcm16 = b"".join(struct.pack('<h', samples[int(i * 1.5)]) for i in range(int(len(samples) / 1.5)))
         frames = [pcm16[i:i+1024].ljust(1024, b'\x00') for i in range(0, len(pcm16), 1024)]
-        async with connect(engine.streaming_stt_url_for(language), additional_headers=engine.streaming_headers(language), compression=None, open_timeout=15) as socket:
+        async with connect(engine.streaming_stt_url, additional_headers=engine.streaming_headers(language), compression=None, open_timeout=15) as socket:
             ready = json.loads(await asyncio.wait_for(socket.recv(), 15))
             if ready.get("type") != "connected":
                 raise RuntimeError("STT did not acknowledge readiness")

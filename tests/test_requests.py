@@ -139,7 +139,7 @@ class EvidenceTests(unittest.TestCase):
         def handler(request):
             calls.append(request)
             return httpx.Response(200,json={'choices':[{'message':{'content':'{"preferred_day":{"value":"Saturday","quote":"Saturday at two","turn_index":1}}'}}]})
-        config=VoiceConfig('','test-key','https://gateway.example/v1','test-model','','','')
+        config=VoiceConfig('test-key','https://gateway.example/v1','test-model')
         async def check():
             async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
                 engine=VoiceEngine(config=config,client=client)

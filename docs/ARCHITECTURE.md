@@ -17,7 +17,6 @@ Browser (buildless ES modules) → same-origin FastAPI API → transaction servi
 - `app/requests.py`: post-call extraction validation, optimistic review revisions, local leads and follow-up tasks.
 - `static/voice-session.js`, `pcm-capture.js`, `request-review.js`: microphone lifecycle, PCM framing, automatic interruption and request-review UI.
 - `static/ui.js`, `views.js`, `forms.js`, `app.js`: escaped rendering, navigation, forms, API client and interaction state.
-- `optional/voice/voice_gate.py`: original audio gate preserved for future Pipecat worker; not imported or installed by the demo.
 
 ## Storage and lifecycle
 Records use `(kind,id)` primary keys and JSON bodies. Kinds: agents, contacts, calls, workflows, tasks, leads, meta. Structured business requests and revision/audit metadata live inside their call record. A separate request table holds idempotency results. The schema is intentionally small for a single operator; it is not a normalized multi-tenant schema.
