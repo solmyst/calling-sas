@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added accounts: an unlimited main account (`ADMIN_EMAIL` + `DEMO_PASSWORD`) and self-service trial sign-up. Each trial gets a private seeded workspace with 15 minutes of live voice for 7 days, one live stream at a time, and a cap of 20 new trials per day. Existing data migrates to the main account's workspace.
 - Browser-session opt-out detection now uses the same phrases as the simulator, including "remove me" and "opt out", with Hindi phrases shared both ways.
 - `startup.sh` refuses local mode and no longer trusts client-supplied `X-Forwarded-For`, which bypassed the login rate limit.
 - Removed the AssemblyAI/ElevenLabs speech path, `SPEECH_PROVIDER`, `/voice/turn` and non-streaming `/voice/respond`. Gnani is always used.

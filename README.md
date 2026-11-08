@@ -113,11 +113,21 @@ BIFROST_MODELS=
 | `LLM_FALLBACK_ENABLED`, `GROQ_FALLBACK_TIMEOUT_SECONDS`, `GROQ_CIRCUIT_SECONDS` | With Groq primary, route capacity, rate-limit, timeout and transient failures to the configured Gemini gateway. The circuit avoids retrying Groq during its cooldown. |
 | `PORT`, `PUBLIC_ORIGIN` | Listening port and exact browser origin; change them together |
 | `DATABASE_PATH` | SQLite file; defaults to `runtime/relay.sqlite` |
-| `DEMO_PASSWORD` | Optional shared workspace password locally; required in hosted mode |
+| `ADMIN_EMAIL`, `DEMO_PASSWORD` | Main account sign-in (`ADMIN_EMAIL` defaults to `admin`). Setting `DEMO_PASSWORD` turns on accounts and trial sign-up; required in hosted mode |
 | `SESSION_SECRET` | Session-signing secret; required in hosted mode |
 | `APP_ENV`, `HOST` | Local/hosted behavior and bind address; see deployment documentation |
 
 Gnani is the only speech provider. Missing Gnani credentials disable browser voice; there is no fallback to another paid speech provider. A live microphone stream closes after 10 minutes without detected speech and resumes when the operator unpauses it. See [.env.example](.env.example) and [detailed Gnani setup](docs/GNANI-DEMO.md).
+
+### Accounts and trials
+
+When `DEMO_PASSWORD` is set, the login page offers email sign-in and self-service trial sign-up.
+
+- **Main account:** sign in with `ADMIN_EMAIL` and `DEMO_PASSWORD`. Unlimited voice. Owns all data from before accounts existed.
+- **Trial accounts:** email and password (10+ characters). Each gets a private workspace seeded with the demo agents, 15 minutes of live voice, and 7 days. Typed simulation stays available after the trial ends.
+- **Limits:** voice time is metered as live microphone stream seconds, one live stream per trial account. At most 20 new trials per day (UTC) and 5 sign-ups per hour per network.
+
+There is no email verification or password reset yet. Constants live in `app/accounts.py`.
 
 Speech, model and optional extraction requests can incur provider charges. No API credits, provider account rights or production capacity are included with the repository. Manual request entry and typed simulation do not need model credentials.
 

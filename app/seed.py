@@ -1,7 +1,7 @@
 """Create minimum product configuration without fabricated activity data."""
 
 from .engine import now
-from .store import Store
+from .store import Store, workspace
 
 PRODUCT_AGENT = {
     "id": "agent-sales", "name": "Relay AI",
@@ -82,11 +82,12 @@ def seed(store):
             return
         if version < 2:
             # Remove only records shipped by the former fictional showcase.
-            db.execute("DELETE FROM records WHERE kind='calls' AND id LIKE 'seed-call-%'")
-            db.execute("DELETE FROM records WHERE kind='tasks' AND id LIKE 'task-seed-call-%'")
-            db.execute("DELETE FROM records WHERE kind='workflows' AND id IN ('workflow-1','workflow-2')")
-            db.execute("DELETE FROM records WHERE kind='agents' AND id IN ('agent-reminders','agent-support')")
-            db.execute("DELETE FROM records WHERE kind='contacts' AND id IN ('contact-2','contact-3','contact-4','contact-5','contact-6')")
+            ws = workspace.get()
+            db.execute("DELETE FROM records WHERE ws=? AND kind='calls' AND id LIKE 'seed-call-%'", (ws,))
+            db.execute("DELETE FROM records WHERE ws=? AND kind='tasks' AND id LIKE 'task-seed-call-%'", (ws,))
+            db.execute("DELETE FROM records WHERE ws=? AND kind='workflows' AND id IN ('workflow-1','workflow-2')", (ws,))
+            db.execute("DELETE FROM records WHERE ws=? AND kind='agents' AND id IN ('agent-reminders','agent-support')", (ws,))
+            db.execute("DELETE FROM records WHERE ws=? AND kind='contacts' AND id IN ('contact-2','contact-3','contact-4','contact-5','contact-6')", (ws,))
             Store.put(db, "agents", PRODUCT_AGENT)
             Store.put(db, "contacts", DEMO_PARTICIPANT)
         if version < 3:

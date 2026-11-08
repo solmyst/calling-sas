@@ -11,7 +11,8 @@ from websockets.asyncio.client import connect as websocket_connect
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from .store import Store
+from .store import Store, workspace
+from . import accounts
 from .engine import OPT_OUT, DemoProvider, LiveCallingDisabled, now, private
 from .seed import seed
 from .voice import VoiceConfigurationError, VoiceProviderError
@@ -23,6 +24,8 @@ load_dotenv(ROOT / ".env", override=False)
 # stream after this long without detected speech; the browser can resume it.
 STREAM_IDLE_SECONDS = 600
 STREAM_IDLE_CLOSE_CODE = 4408
+STREAM_TRIAL_CLOSE_CODE = 4402  # trial voice time used up or expired
+STREAM_BUSY_CLOSE_CODE = 4409  # trial account already has a live stream
 
 
 class Model(BaseModel):
@@ -115,7 +118,13 @@ class Run(Model):
 
 
 class Login(Model):
+    email: str = Field(default="", max_length=200)
     password: str = Field(max_length=300)
+
+
+class Signup(Model):
+    email: str = Field(max_length=200, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+    password: str = Field(min_length=10, max_length=300)
 
 
 def require(db, kind, id):
@@ -218,20 +227,55 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         openapi_url=None,
     )
     app.state.store = store
+    admin_email = os.getenv("ADMIN_EMAIL", "admin").strip().lower()
     attempts = defaultdict(deque)
+    live_streams = set()
     responding = set()
     active_responses = {}
     backchannel_cache = {}
 
-    def valid(token):
+    def sign(payload):
+        return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+
+    def session_user(token):
+        """The signed-in account for a session cookie, or None."""
         try:
-            expiry, nonce, sig = token.split(".")
-            expected = hmac.new(
-                secret.encode(), f"{expiry}.{nonce}".encode(), hashlib.sha256
-            ).hexdigest()
-            return int(expiry) > time.time() and hmac.compare_digest(sig, expected)
+            expiry, user_id, nonce, sig = token.split(".")
+            if int(expiry) <= time.time() or not hmac.compare_digest(sig, sign(f"{expiry}.{user_id}.{nonce}")):
+                return None
         except (ValueError, AttributeError):
-            return False
+            return None
+        if user_id == accounts.MAIN:
+            return accounts.main_account(admin_email)
+        with store.transaction() as db:
+            user = accounts.get(db, user_id)
+        return user if user and not user.get("disabled") else None
+
+    def signed_in(response, user):
+        payload = f"{int(time.time() + 28800)}.{user['id']}.{secrets.token_hex(16)}"
+        response.set_cookie(
+            "relay_session",
+            payload + "." + sign(payload),
+            httponly=True,
+            secure=environment != "local",
+            samesite="strict",
+            max_age=28800,
+        )
+        return response
+
+    def throttle(key, limit, seconds, message):
+        q = attempts[key]
+        while q and q[0] < time.time() - seconds:
+            q.popleft()
+        if len(q) >= limit:
+            raise HTTPException(429, message)
+        q.append(time.time())
+
+    def require_voice(request):
+        """Trial accounts need unexpired trial time for anything that uses paid speech."""
+        left = accounts.voice_left(request.state.user)
+        if left is not None and left <= 0:
+            raise HTTPException(402, "Your trial voice time is used up or has expired. Typed simulation is still available.")
 
     @app.middleware("http")
     async def boundary(request: Request, call_next):
@@ -255,16 +299,20 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                 )
             if size > 64000:
                 return JSONResponse({"detail": "Request too large"}, status_code=413)
-        if (
-            request.url.path.startswith("/api/")
-            and request.url.path not in ("/api/session", "/api/login")
-            and password
-            and not valid(request.cookies.get("relay_session", ""))
-        ):
-            return JSONResponse(
-                {"detail": "Sign in to this demo workspace"}, status_code=401
-            )
-        response = await call_next(request)
+        user = accounts.main_account(admin_email)
+        if password and request.url.path.startswith("/api/"):
+            user = session_user(request.cookies.get("relay_session", ""))
+            if not user and request.url.path not in ("/api/session", "/api/login", "/api/signup"):
+                return JSONResponse(
+                    {"detail": "Sign in to this demo workspace"}, status_code=401
+                )
+        request.state.user = user
+        # Scopes every Store read/write in this request to the account's workspace.
+        scope = workspace.set(user["id"] if user else accounts.SYSTEM)
+        try:
+            response = await call_next(request)
+        finally:
+            workspace.reset(scope)
         response.headers.update(
             {
                 "X-Content-Type-Options": "nosniff",
@@ -286,37 +334,52 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
 
     @app.get("/api/session")
     def session(request: Request):
+        user = request.state.user
         return {
-            "authenticated": not password
-            or valid(request.cookies.get("relay_session", "")),
+            "authenticated": bool(user),
             "password_required": bool(password),
+            "signup_open": bool(password),
+            "account": accounts.view(user) if user else None,
         }
 
     @app.post("/api/login")
     def login(body: Login, request: Request):
-        key = request.client.host if request.client else "unknown"
-        q = attempts[key]
-        while q and q[0] < time.time() - 300:
-            q.popleft()
-        if len(q) >= 10:
-            raise HTTPException(429, "Too many attempts. Try again in five minutes.")
-        q.append(time.time())
-        if not password or not hmac.compare_digest(
-            body.password.encode(), password.encode()
-        ):
-            raise HTTPException(401, "Incorrect workspace password")
-        payload = f"{int(time.time() + 28800)}.{secrets.token_hex(16)}"
-        sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        r = JSONResponse({"authenticated": True})
-        r.set_cookie(
-            "relay_session",
-            payload + "." + sig,
-            httponly=True,
-            secure=environment != "local",
-            samesite="strict",
-            max_age=28800,
-        )
-        return r
+        throttle("login:" + (request.client.host if request.client else "unknown"), 10, 300,
+                 "Too many attempts. Try again in five minutes.")
+        email = body.email.strip().lower()
+        if not password:
+            raise HTTPException(401, "Incorrect email or password")
+        if not email or email == admin_email:
+            if not hmac.compare_digest(body.password.encode(), password.encode()):
+                raise HTTPException(401, "Incorrect email or password")
+            user = accounts.main_account(admin_email)
+        else:
+            with store.transaction() as db:
+                user = accounts.find(db, email)
+            if not user or user.get("disabled") or not accounts.check_password(body.password, user["password"]):
+                raise HTTPException(401, "Incorrect email or password")
+        return signed_in(JSONResponse({"authenticated": True}), user)
+
+    @app.post("/api/signup")
+    def signup(body: Signup, request: Request):
+        if not password:
+            raise HTTPException(404, "Accounts are not enabled on this workspace.")
+        throttle("signup:" + (request.client.host if request.client else "unknown"), 5, 3600,
+                 "Too many sign-ups from this network. Try again later.")
+        if body.email.strip().lower() == admin_email:
+            raise HTTPException(409, "An account with this email already exists.")
+        with store.transaction() as db:
+            if accounts.find(db, body.email):
+                raise HTTPException(409, "An account with this email already exists.")
+            if accounts.signups_today(db) >= accounts.TRIAL_SIGNUPS_PER_DAY:
+                raise HTTPException(429, "Today's trial places are full. Please try again tomorrow.")
+            user = accounts.create_trial(db, body.email, body.password)
+        scope = workspace.set(user["id"])
+        try:
+            seed(store)
+        finally:
+            workspace.reset(scope)
+        return signed_in(JSONResponse({"authenticated": True, "account": accounts.view(user)}), user)
 
     @app.post("/api/logout")
     def logout():
@@ -325,7 +388,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         return r
 
     @app.get("/api/state")
-    def state():
+    def state(request: Request):
         with store.transaction() as db:
             data = {
                 k: Store.all(db, k)
@@ -333,6 +396,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             }
         data["calls"].sort(key=lambda c: c["started_at"], reverse=True)
         data["metrics"] = metrics(data["calls"])
+        data["account"] = accounts.view(request.state.user)
         data["settings"] = {
             "mode": "browser_voice" if voice.ready else "demo",
             "telephony": "disabled",
@@ -437,8 +501,9 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         Store.put(db, "calls", c)
 
     @app.post("/api/calls")
-    def start(body: Start):
+    def start(body: Start, request: Request):
         if body.mode == "browser":
+            require_voice(request)
             try:
                 voice.require_ready()
             except VoiceConfigurationError as e:
@@ -466,7 +531,8 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         return c
 
     @app.post("/api/calls/{id}/voice/opening")
-    async def voice_opening(id: str):
+    async def voice_opening(id: str, request: Request):
+        require_voice(request)
         with store.transaction() as db:
             c = require(db, "calls", id)
         if c["mode"] != "browser":
@@ -484,14 +550,38 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         if request_origin and request_origin not in origins:
             await websocket.close(code=1008)
             return
-        if password and not valid(websocket.cookies.get("relay_session", "")):
-            await websocket.close(code=1008)
-            return
+        user = accounts.main_account(admin_email)
+        if password:
+            user = session_user(websocket.cookies.get("relay_session", ""))
+            if not user:
+                await websocket.close(code=1008)
+                return
+        # WebSockets skip the HTTP middleware; scope this connection's task here.
+        workspace.set(user["id"])
         with store.transaction() as db:
             c = Store.get(db, "calls", id)
         if not c or c.get("mode") != "browser" or c.get("status") != "in_progress":
             await websocket.close(code=1008)
             return
+        allowance = accounts.voice_left(user)
+        metered = allowance is not None
+        if metered and (allowance <= 0 or user["id"] in live_streams):
+            await websocket.accept()
+            await websocket.close(code=STREAM_TRIAL_CLOSE_CODE if allowance <= 0 else STREAM_BUSY_CLOSE_CODE)
+            return
+        if metered:
+            live_streams.add(user["id"])
+        started = time.monotonic()
+        try:
+            await stream_speech(websocket, c, allowance, started)
+        finally:
+            if metered:
+                live_streams.discard(user["id"])
+                with store.transaction() as db:
+                    accounts.add_voice_seconds(db, user["id"], round(time.monotonic() - started))
+
+    async def stream_speech(websocket, c, allowance, started):
+        """Relay microphone audio to speech recognition until idle, out of trial time, or closed."""
         try:
             voice.require_ready()
             from .vad import SileroVad
@@ -544,23 +634,29 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                                 last_speech = time.monotonic()
                             await send_event(event)
 
-                async def idle_watch():
-                    while (left := STREAM_IDLE_SECONDS - (time.monotonic() - last_speech)) > 0:
-                        await asyncio.sleep(min(15, left))
+                async def limit_watch():
+                    while True:
+                        idle_left = STREAM_IDLE_SECONDS - (time.monotonic() - last_speech)
+                        trial_left = float("inf") if allowance is None else allowance - (time.monotonic() - started)
+                        if idle_left <= 0:
+                            return STREAM_IDLE_CLOSE_CODE
+                        if trial_left <= 0:
+                            return STREAM_TRIAL_CLOSE_CODE
+                        await asyncio.sleep(min(15, idle_left, trial_left))
 
-                idle = asyncio.create_task(idle_watch())
-                tasks = [asyncio.create_task(send_audio()), asyncio.create_task(send_transcripts()), idle]
+                limit = asyncio.create_task(limit_watch())
+                tasks = [asyncio.create_task(send_audio()), asyncio.create_task(send_transcripts()), limit]
                 done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 for task in pending:
                     task.cancel()
                 await asyncio.gather(*pending, return_exceptions=True)
                 for task in done:
                     task.result()
-                if idle in done:
-                    logging.getLogger("uvicorn.error").info("streaming_stt_idle_closed call_id=%s", id)
-                    await websocket.close(code=STREAM_IDLE_CLOSE_CODE)
+                if limit in done:
+                    logging.getLogger("uvicorn.error").info("streaming_stt_limit_closed call_id=%s code=%s", c["id"], limit.result())
+                    await websocket.close(code=limit.result())
         except Exception:
-            logging.getLogger("uvicorn.error").warning("streaming_stt_failed call_id=%s", id)
+            logging.getLogger("uvicorn.error").warning("streaming_stt_failed call_id=%s", c["id"])
             try:
                 await websocket.close(code=1011)
             except Exception:
@@ -595,7 +691,8 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         return {"interrupted": True, "request_id": body.request_id}
 
     @app.post("/api/calls/{id}/voice/backchannel")
-    async def voice_backchannel(id: str):
+    async def voice_backchannel(id: str, request: Request):
+        require_voice(request)
         with store.transaction() as db:
             c = require(db, "calls", id)
             if c["mode"] != "browser" or c["status"] != "in_progress":
@@ -621,7 +718,8 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         return {"audio": base64.b64encode(audio).decode(), "sample_rate": 24000}
 
     @app.post("/api/calls/{id}/voice/respond/stream")
-    async def voice_respond_stream(id: str, body: VoiceText):
+    async def voice_respond_stream(id: str, body: VoiceText, request: Request):
+        require_voice(request)
         with store.transaction() as db:
             c = require(db, "calls", id)
             if c["mode"] != "browser" or c["status"] != "in_progress":

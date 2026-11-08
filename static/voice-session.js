@@ -56,8 +56,11 @@ export class VoiceSession {
     clearTimeout(timeout);
     if(!ready)reject(new Error('Speech recognition disconnected.'));
     if(this.socket!==socket||this.closed)return;
-    // 4408: server closed an idle stream. Stay paused until the operator resumes.
-    if(event.code===4408){this.paused=true;this.interrupt();this.status('Microphone paused after 10 minutes without speech. Resume to continue.');return;}
+    // Server-chosen closes: stay paused instead of reconnecting.
+    const stopped={4408:'Microphone paused after 10 minutes without speech. Resume to continue.',
+     4402:'Your trial voice time is used up. Typed simulation is still available.',
+     4409:'Voice is already live in another tab. Close it, then resume here.'}[event.code];
+    if(stopped){this.paused=true;this.interrupt();this.status(stopped);if(event.code===4402)this.onError(stopped);return;}
     if(this.paused)return;
     this.status('Reconnecting microphone…');this.retryConnection();
    };

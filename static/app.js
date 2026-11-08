@@ -8,7 +8,7 @@ const find=(kind,id)=>data[kind].find(x=>x.id===id);
 async function refresh(){data=await api('/state');render()}
 function render(){
  const renderers={demos:()=>V.demos(data),overview:()=>V.overview(data),agents:()=>V.agents(data),contacts:()=>V.contacts(data,query),studio:()=>V.studio(data,currentCall,selectedAgent),workflows:()=>V.workflows(data),history:()=>V.history(data,query,filter),analytics:()=>V.analytics(data),settings:()=>V.settings(data)};
- $('#app').innerHTML=V.shell(page,renderers[page]());bind();
+ $('#app').innerHTML=V.shell(page,renderers[page](),data.account);bind();
  document.querySelectorAll('#app a[href^="/api/"]').forEach(a=>a.setAttribute('href',basePath+a.getAttribute('href')));
  if(page==='studio'&&currentCall){const el=$('.transcript');if(el)el.scrollTop=el.scrollHeight;}
 }
@@ -76,10 +76,18 @@ async function showCall(id){
  };
  d.addEventListener('close',()=>{if('speechSynthesis' in window)speechSynthesis.cancel()},{once:true});
 }
+function showLogin(signupOpen,signup){
+ const heading=signup?'Start your free trial.':'Your workspace awaits.';
+ const intro=signup?'Get a private workspace with 15 minutes of live voice for 7 days. Typed simulation stays free.':'Sign in with your email and password.';
+ const toggle=signupOpen?`<button class="text-button" type="button" id="switch-auth">${signup?'Already have an account? Sign in':'New here? Create a trial account'}</button>`:'';
+ $('#app').innerHTML=`<main class="login"><section class="card"><div class="brand"><span class="brand-mark">${icon('chart')}</span>relay. voice</div><h1>${heading}</h1><p>${intro}</p><form id="login"><label>Email<input name="email" type="${signup?'email':'text'}" required autocomplete="username"></label><label>Password<input name="password" type="password" required ${signup?'minlength="10" autocomplete="new-password"':'autocomplete="current-password"'}></label>${signup?'<p class="form-help">At least 10 characters.</p>':''}<p class="form-error" role="alert"></p><button class="button primary" type="submit">${signup?'Create trial account':'Sign in'} ${icon('arrow')}</button></form>${toggle}</section></main>`;
+ $('#login').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{await api(signup?'/signup':'/login','POST',{email:f.get('email'),password:f.get('password')});await init()}catch(err){$('.form-error').textContent=err.message}};
+ if(signupOpen)$('#switch-auth').onclick=()=>showLogin(signupOpen,!signup);
+}
 async function init(){
  try{
   const session=await api('/session');
-  if(!session.authenticated){$('#app').innerHTML=`<main class="login"><section class="card"><div class="brand"><span class="brand-mark">${icon('chart')}</span>relay. voice</div><h1>Your workspace awaits.</h1><p>Enter your demo workspace password to continue.</p><form id="login"><label>Workspace password<input name="password" type="password" required autocomplete="current-password"></label><p class="form-error" role="alert"></p><button class="button primary" type="submit">Sign in ${icon('arrow')}</button></form></section></main>`;$('#login').onsubmit=async e=>{e.preventDefault();try{await api('/login','POST',{password:new FormData(e.target).get('password')});await init()}catch(err){$('.form-error').textContent=err.message}};return}
+  if(!session.authenticated){showLogin(session.signup_open,false);return}
   page=V.nav.some(x=>x[0]===location.hash.slice(1))?location.hash.slice(1):'overview';await refresh();
  }catch(e){$('#app').innerHTML=`<div class="error-box"><h1>Workspace unavailable</h1><p>${esc(e.message)}</p><button class="button" id="retry">Try again</button></div>`;$('#retry').onclick=init}
 }
