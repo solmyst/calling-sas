@@ -22,6 +22,14 @@ const liveVoice=new VoiceSession({
  onError:message=>toast(message),
 });
 async function startVoiceSession(){await liveVoice.start(currentCall);}
+// Phone calls run on the server; poll the record so the studio shows the live transcript.
+async function followPhoneCall(id){
+ while(currentCall?.id===id&&currentCall.status==='in_progress'){
+  await new Promise(r=>setTimeout(r,2000));
+  if(currentCall?.id!==id)return;
+  try{currentCall=await api('/calls/'+id);if(currentCall.status!=='in_progress')await refresh();else render();}catch{return}
+ }
+}
 function search(input,type){const pos=input.selectionStart;query=input.value;render();const el=$('#'+type+'-search');el.focus();el.setSelectionRange(pos,pos)}
 function bind(){
  document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>safely(()=>action(b.dataset.action),b));
@@ -46,7 +54,7 @@ async function action(name){
  if(name==='new-workflow')return editWorkflow(null,data,refresh);
  if(name==='start-call'){
   if(busy||currentCall?.status==='in_progress')return;busy=true;
-  try{const mode=$('#studio-mode').value;selectedAgent=$('#studio-agent').value;currentCall=await api('/calls','POST',{agent_id:selectedAgent,contact_id:$('#studio-contact').value,mode,request_id:crypto.randomUUID()});await refresh();if(mode==='browser')await startVoiceSession()}catch(e){await liveVoice.close();if(currentCall?.status==='in_progress')currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();throw e}finally{busy=false}
+  try{const mode=$('#studio-mode').value;selectedAgent=$('#studio-agent').value;currentCall=await api('/calls','POST',{agent_id:selectedAgent,contact_id:$('#studio-contact').value,mode,request_id:crypto.randomUUID()});await refresh();if(mode==='browser')await startVoiceSession();if(mode==='phone')followPhoneCall(currentCall.id)}catch(e){await liveVoice.close();if(currentCall?.status==='in_progress')currentCall=await api('/calls/'+currentCall.id+'/end','POST');await refresh();throw e}finally{busy=false}
  }
  if(name==='toggle-voice')return liveVoice.toggle();
  if(name==='replay-opening')return liveVoice.replayOpening();
@@ -61,7 +69,7 @@ async function reply(text){
 async function showCall(id){
  const [c,requestInfo]=await Promise.all([api('/calls/'+id),api('/calls/'+id+'/request')]);
  const outcomeLabel=c.mode==='demo'&&c.outcome==='confirmed'?'Simulated confirmation':c.outcome||c.status;
- const d=dialog(`<h2>Conversation details</h2><p class="subtitle">${esc(c.contact_snapshot.name)} with ${esc(c.agent_snapshot.name)} · ${date(c.started_at)}</p><div class="call-meta">${badge(c.mode==='browser'?'Browser voice':'Simulated')}${badge(c.source==='seed'?'Seeded example':c.source)}${badge(outcomeLabel,c.outcome||'')}</div><div class="call-summary"><strong>${esc(c.summary||'Conversation in progress.')}</strong><p>Next step: ${esc(c.next_action||'Continue the simulation')}</p></div><div id="request-review"></div><h3 class="section-space">Conversation transcript</h3><div class="transcript">${V.transcript(c)}</div><div class="actions"><a class="button" href="${basePath}/api/calls/${c.id}/export" download>${icon('download')}Export transcript</a> <button class="button" id="play-transcript">${icon('volume')}Listen locally</button>${c.status==='in_progress'?` <button class="button primary" id="resume-call">Resume</button>`:''}</div><p class="form-help" id="voice-status">Optional on-device browser voice. No recorded audio or live call.</p><details class="snapshot"><summary>Session memory · customer-provided notes</summary><ol>${(c.memory?.customer_notes||[]).map(n=>`<li>${esc(n.text)}</li>`).join('')||'<li>No customer details recorded yet.</li>'}</ol></details><details class="snapshot"><summary>Agent configuration at the time of this call</summary><pre>${esc('Use case: '+title(c.agent_snapshot.use_case)+'\n\nSystem prompt (stored, not interpreted in offline demo):\n'+c.agent_snapshot.prompt+'\n\nBusiness context:\n'+c.agent_snapshot.context)}</pre></details>`);
+ const d=dialog(`<h2>Conversation details</h2><p class="subtitle">${esc(c.contact_snapshot.name)} with ${esc(c.agent_snapshot.name)} · ${date(c.started_at)}</p><div class="call-meta">${badge(({browser:'Browser voice',phone:'Phone call'}[c.mode]||'Simulated'))}${badge(c.source==='seed'?'Seeded example':c.source)}${badge(outcomeLabel,c.outcome||'')}</div><div class="call-summary"><strong>${esc(c.summary||'Conversation in progress.')}</strong><p>Next step: ${esc(c.next_action||'Continue the simulation')}</p></div><div id="request-review"></div><h3 class="section-space">Conversation transcript</h3><div class="transcript">${V.transcript(c)}</div><div class="actions"><a class="button" href="${basePath}/api/calls/${c.id}/export" download>${icon('download')}Export transcript</a> <button class="button" id="play-transcript">${icon('volume')}Listen locally</button>${c.status==='in_progress'?` <button class="button primary" id="resume-call">Resume</button>`:''}</div><p class="form-help" id="voice-status">Optional on-device browser voice. No recorded audio or live call.</p><details class="snapshot"><summary>Session memory · customer-provided notes</summary><ol>${(c.memory?.customer_notes||[]).map(n=>`<li>${esc(n.text)}</li>`).join('')||'<li>No customer details recorded yet.</li>'}</ol></details><details class="snapshot"><summary>Agent configuration at the time of this call</summary><pre>${esc('Use case: '+title(c.agent_snapshot.use_case)+'\n\nSystem prompt (stored, not interpreted in offline demo):\n'+c.agent_snapshot.prompt+'\n\nBusiness context:\n'+c.agent_snapshot.context)}</pre></details>`);
  mountRequestReview($('#request-review',d),c,requestInfo,api,()=>{refresh().catch(e=>toast(e.message));});
  if($('#resume-call',d))$('#resume-call',d).onclick=()=>safely(async()=>{await liveVoice.close();currentCall=c;selectedAgent=c.agent_id;d.close();navigate('studio');if(c.mode==='browser')await liveVoice.start(c,true);});
  let speaking=false;

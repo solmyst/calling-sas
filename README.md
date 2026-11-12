@@ -18,7 +18,7 @@ Relay Voice combines a business dashboard with a working browser voice pipeline.
 
 The application uses **FastAPI, SQLite and buildless JavaScript**, with **Gnani Prisma STT, Gnani Timbre TTS and a server-side conversation model**. Silero VAD supports automatic interruption. Speech and model API keys stay on the backend.
 
-> **Current scope:** a single-workspace browser voice demo. Real telephone calls, calendar bookings, external CRM updates and message delivery are disabled. Local follow-up records are explicitly labelled. This is not yet a multi-tenant production calling service.
+> **Current scope:** a single-workspace browser voice demo. Real telephone calls run only through an optional VoiceLink bridge on the main account; calendar bookings, external CRM updates and message delivery are disabled. Local follow-up records are explicitly labelled. This is not yet a multi-tenant production calling service.
 
 ## Four demo experiences
 
@@ -129,6 +129,19 @@ When `DEMO_PASSWORD` is set, the login page offers email sign-in and self-servic
 
 There is no email verification or password reset yet. Constants live in `app/accounts.py`.
 
+### Phone calls through VoiceLink
+
+[VoiceLink](https://app.voicelink.co.in/documentation/) connects the agent to Indian phone numbers. Relay Voice dials through `POST /add_lead`, and VoiceLink streams the live call to `/api/telephony/voicelink` over WebSocket. The bridge converts call audio (G.711 A-law, 8 kHz) to Gnani's 16 kHz input and Gnani speech back to A-law, interrupts the AI when the caller talks (`clear`), and saves the transcript like a browser session.
+
+| Setting | Purpose |
+|---|---|
+| `VOICELINK_API_TOKEN` | VoiceLink API bearer token |
+| `VOICELINK_DID` | Your VoiceLink number that places calls |
+| `VOICELINK_WEBSOCKET_URL` | Public `wss://` URL of `/api/telephony/voicelink`, including any proxy prefix such as `/relay` |
+| `VOICELINK_API_URL` | Optional; defaults to `https://app.voicelink.co.in/api/v1` |
+
+Each call carries a token signed with `SESSION_SECRET`; connections without it are refused. VoiceLink has no free trial or sandbox: a KYC-verified account, a funded wallet and a monthly number are needed before the first real call. The bridge is tested against a simulated call built from VoiceLink's documented events; it has not yet carried a real call. Inbound calls and VoiceLink status webhooks are not connected.
+
 Speech, model and optional extraction requests can incur provider charges. No API credits, provider account rights or production capacity are included with the repository. Manual request entry and typed simulation do not need model credentials.
 
 ## Demo walkthrough
@@ -152,7 +165,7 @@ Suggested pitch: demonstrate one relevant workflow, an unexpected question, a co
 | Workflow run | Manual batch of scripted simulations; no scheduled phone campaign |
 | Request extraction | Optional paid post-call model request with validated customer evidence; suggestions require operator review |
 | Local follow-up | Persisted workspace-local lead/task; repeated saves reuse the same records |
-| Telephone calling | Rejected by the backend; no carrier adapter is installed |
+| Telephone calling | Optional VoiceLink bridge, main account only, 9 am to 9 pm India time, +91 mobile contacts with recorded consent. Disabled unless `VOICELINK_*` settings are present |
 | Calendar/CRM/messaging | External actions disabled; no booking, CRM sync, transfer, SMS, email or WhatsApp delivery |
 
 Business outcomes and connection/session status are different. Browser sessions are saved conservatively for follow-up, handoff or opt-out; simulated positive outcomes do not prove production conversions.

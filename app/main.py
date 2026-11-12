@@ -2,9 +2,11 @@ import asyncio, base64, hashlib, hmac, json, logging, os, re, secrets, time, uui
 from collections import Counter, defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Literal
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from websockets.asyncio.client import connect as websocket_connect
@@ -12,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Str
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .store import Store, workspace
-from . import accounts
+from . import accounts, telephony
 from .engine import OPT_OUT, DemoProvider, LiveCallingDisabled, now, private
 from .seed import seed
 from .voice import VoiceConfigurationError, VoiceProviderError
@@ -26,6 +28,8 @@ STREAM_IDLE_SECONDS = 600
 STREAM_IDLE_CLOSE_CODE = 4408
 STREAM_TRIAL_CLOSE_CODE = 4402  # trial voice time used up or expired
 STREAM_BUSY_CLOSE_CODE = 4409  # trial account already has a live stream
+PHONE_MAX_SECONDS = 15 * 60  # hard cap per phone call
+PHONE_HOURS = (9, 21)  # India time; TRAI permits commercial calls 9 am to 9 pm
 
 
 class Model(BaseModel):
@@ -228,6 +232,13 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
     )
     app.state.store = store
     admin_email = os.getenv("ADMIN_EMAIL", "admin").strip().lower()
+    voicelink = {
+        "url": (os.getenv("VOICELINK_API_URL") or "https://app.voicelink.co.in/api/v1").rstrip("/"),
+        "token": os.getenv("VOICELINK_API_TOKEN", "").strip(),
+        "did": os.getenv("VOICELINK_DID", "").strip(),
+        "websocket_url": os.getenv("VOICELINK_WEBSOCKET_URL", "").strip(),
+    }
+    telephony_ready = all(voicelink[k] for k in ("token", "did", "websocket_url"))
     attempts = defaultdict(deque)
     live_streams = set()
     responding = set()
@@ -399,7 +410,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         data["account"] = accounts.view(request.state.user)
         data["settings"] = {
             "mode": "browser_voice" if voice.ready else "demo",
-            "telephony": "disabled",
+            "telephony": "voicelink" if telephony_ready else "disabled",
             "conversation_engine": " + ".join(voice.providers.values()) if voice.ready else "Offline simulator",
             "ai_connected": voice.ready,
             "voice_providers": voice.providers,
@@ -508,6 +519,17 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                 voice.require_ready()
             except VoiceConfigurationError as e:
                 raise HTTPException(503, str(e))
+        elif body.mode == "phone":
+            if request.state.user["role"] != "main":
+                raise HTTPException(403, "Phone calls are available on the main account only.")
+            if not telephony_ready:
+                raise HTTPException(503, "Phone calling needs VoiceLink configuration.")
+            try:
+                voice.require_ready()
+            except VoiceConfigurationError as e:
+                raise HTTPException(503, str(e))
+            if not PHONE_HOURS[0] <= datetime.now(ZoneInfo("Asia/Kolkata")).hour < PHONE_HOURS[1]:
+                raise HTTPException(409, "Phone calls are allowed only between 9 am and 9 pm India time.")
         elif body.mode != "demo":
             try:
                 LiveCallingDisabled().start()
@@ -528,7 +550,41 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             c = make_call(db, body.agent_id, body.contact_id, mode=body.mode)
             Store.cache(db, key, c)
         logging.getLogger("uvicorn.error").info("call_created id=%s mode=%s", c["id"], c["mode"])
+        if c["mode"] == "phone":
+            dial(c)
         return c
+
+    def phone_token(call_id):
+        return sign("phone." + call_id)
+
+    def dial(c):
+        """Ask VoiceLink to ring the contact and stream the call to our bridge."""
+        number = c["contact_snapshot"]["phone"]
+        error = None
+        if not re.fullmatch(r"\+91[6-9]\d{9}", number):
+            error = (422, "VoiceLink calls need an Indian mobile number in +91 format.")
+        else:
+            try:
+                response = httpx.post(
+                    voicelink["url"] + "/add_lead",
+                    headers={"Authorization": "Bearer " + voicelink["token"], "Accept": "application/json"},
+                    json={
+                        "did_number": voicelink["did"],
+                        "customer_number": number[3:],
+                        "country_code": "91",
+                        "websocket_url": voicelink["websocket_url"],
+                        "custom_parameters": json.dumps({"call_id": c["id"], "token": phone_token(c["id"])}),
+                    },
+                    timeout=15,
+                )
+                if response.status_code >= 400:
+                    error = (502, "VoiceLink rejected the call. Check the number, wallet balance and VoiceLink settings.")
+            except httpx.HTTPError:
+                error = (502, "VoiceLink is unreachable. The call was not placed.")
+        if error:
+            with store.transaction() as db:
+                end_call(db, require(db, "calls", c["id"]), "Phone call was not placed: " + error[1])
+            raise HTTPException(*error)
 
     @app.post("/api/calls/{id}/voice/opening")
     async def voice_opening(id: str, request: Request):
@@ -851,40 +907,91 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             Store.cache(db, key, {"id": c["id"]})
             return c
 
+    def end_call(db, c, summary):
+        """Close an in-progress call; live calls with customer speech are classified for review."""
+        if c["status"] != "in_progress":
+            return c
+        c.update(status="cancelled", outcome="cancelled", ended_at=now(), summary=summary, next_action="No action")
+        Store.put(db, "calls", c)
+        if c["mode"] in ("browser", "phone") and any(t["role"] == "customer" for t in c["transcript"]):
+            customer = " ".join(t["text"] for t in c["transcript"] if t["role"] == "customer").lower()
+            opted_out = bool(OPT_OUT.search(customer))
+            handoff = bool(re.search(r"\bhuman\b|\bmanager\b|इंसान|किसी व्यक्ति", customer))
+            outcome = "opted_out" if opted_out else "handoff" if handoff else "follow_up"
+            label = "Phone" if c["mode"] == "phone" else "Browser"
+            c.update(status="completed", outcome=outcome,
+                     summary=f"{label} {c['agent_snapshot']['use_case']} session saved for review. No external action was executed.",
+                     next_action="Respect opt-out" if opted_out else "Review human handoff request" if handoff else "Review transcript and agree next step")
+            finish(db, c)
+        return c
+
     @app.post("/api/calls/{id}/end")
     def end(id: str):
         with store.transaction() as db:
             c = require(db, "calls", id)
-            if c["status"] == "in_progress":
-                browser = c["mode"] == "browser"
-                c.update(
-                    status="cancelled",
-                    outcome="cancelled",
-                    ended_at=now(),
-                    summary=(
-                        "Browser voice session ended by the operator."
-                        if browser
-                        else "Simulation ended by the operator."
-                    ),
-                    next_action="No action",
-                )
-                Store.put(db, "calls", c)
-                if browser and any(t["role"] == "customer" for t in c["transcript"]):
-                    customer = " ".join(t["text"] for t in c["transcript"] if t["role"] == "customer").lower()
-                    opted_out = bool(OPT_OUT.search(customer))
-                    handoff = bool(re.search(r"\bhuman\b|\bmanager\b|इंसान|किसी व्यक्ति", customer))
-                    outcome = "opted_out" if opted_out else "handoff" if handoff else "follow_up"
-                    c.update(status="completed", outcome=outcome,
-                             summary=f"Browser {c['agent_snapshot']['use_case']} session saved for review. No external action was executed.",
-                             next_action="Respect opt-out" if opted_out else "Review human handoff request" if handoff else "Review transcript and agree next step")
-                    finish(db, c)
-            return c
+            summary = {"browser": "Browser voice session ended by the operator.",
+                       "phone": "Phone call record closed by the operator."}.get(c["mode"], "Simulation ended by the operator.")
+            return end_call(db, c, summary)
+
+    @app.websocket("/api/telephony/voicelink")
+    async def voicelink_stream(websocket: WebSocket):
+        """VoiceLink connects here per call; custom_parameters carry our call ID and its signed token."""
+        await websocket.accept()
+        workspace.set(accounts.MAIN)  # phone calls belong to the main account
+        call_id = None
+        try:
+            start = None
+            while start is None:
+                event = await asyncio.wait_for(websocket.receive_json(), 10)
+                if event.get("event") == "start":
+                    start = event
+            params = telephony.custom_parameters(start)
+            candidate = str(params.get("call_id", ""))
+            if not hmac.compare_digest(str(params.get("token", "")), phone_token(candidate)):
+                await websocket.close(code=1008)
+                return
+            with store.transaction() as db:
+                c = Store.get(db, "calls", candidate)
+            if not c or c["mode"] != "phone" or c["status"] != "in_progress":
+                await websocket.close(code=1008)
+                return
+            call_id = candidate
+            from .vad import SileroVad
+            vad = await asyncio.to_thread(vad_factory or SileroVad)
+
+            def save(update):
+                with store.transaction() as db:
+                    latest = require(db, "calls", call_id)
+                    update(latest)
+                    update_memory(latest)
+                    Store.put(db, "calls", latest)
+                return latest
+
+            def is_live():
+                with store.transaction() as db:
+                    return Store.get(db, "calls", call_id, ws=accounts.MAIN)["status"] == "in_progress"
+
+            await telephony.run_call(websocket, start, c, voice=voice, vad=vad, connect=websocket_connect,
+                                     save=save, is_live=is_live, max_seconds=PHONE_MAX_SECONDS,
+                                     idle_seconds=STREAM_IDLE_SECONDS)
+        except (WebSocketDisconnect, asyncio.TimeoutError):
+            pass
+        except Exception:
+            logging.getLogger("uvicorn.error").warning("phone_call_failed call_id=%s", call_id)
+        finally:
+            if call_id:
+                with store.transaction() as db:
+                    end_call(db, require(db, "calls", call_id), "Phone call ended.")
+            try:
+                await websocket.close()
+            except Exception:
+                pass
 
     @app.get("/api/calls/{id}/export")
     def export(id: str):
         with store.transaction() as db:
             c = require(db, "calls", id)
-        label = "BROWSER VOICE SESSION" if c["mode"] == "browser" else "SIMULATED CALL"
+        label = {"browser": "BROWSER VOICE SESSION", "phone": "PHONE CALL"}.get(c["mode"], "SIMULATED CALL")
         txt = f"RELAY VOICE — {label}\nCall: {c['id']}\nAgent: {c['agent_snapshot']['name']}\nOutcome: {c['outcome'] or 'In progress'}\n{c['summary']}\n\n"
         txt += "\n\n".join(f"{t['role'].upper()}: {t['text']}" for t in c["transcript"])
         return PlainTextResponse(
