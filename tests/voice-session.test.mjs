@@ -33,12 +33,14 @@ test('finishing the opening does not report an empty-source playback error',asyn
  }finally{globalThis.Audio=previousAudio;await session.close();}
 });
 
-test('Silero speech event immediately stops queued audio and aborts the old response',async()=>{
+test('a recognized customer turn stops queued audio and aborts the old response',async()=>{
  const {session,calls,created}=setup();
- session.epoch=3;session.activeId='old-response';session.processing=true;
+ session.epoch=3;session.activeId='old-response';session.processing=true;session.speakingText='Which day suits you?';
  const controller=new AbortController();session.controller=controller;
  session.schedule(audio,24000,3);
  session.receive({type:'vad_speech_start',engine:'silero-v5'});
+ assert.equal(controller.signal.aborted,false,'voice activity alone only lowers the volume');
+ session.receive({type:'Turn',transcript:'Friday at eleven',end_of_turn:true,turn_order:'barge'});
  assert.equal(controller.signal.aborted,true);
  assert.equal(created[0].stopped,true);
  assert.equal(session.sources.size,0);
@@ -53,10 +55,19 @@ test('Silero speech event immediately stops queued audio and aborts the old resp
  await session.close();
 });
 
-test('speech can interrupt the opening while the AI voice is playing',async()=>{
+test('speaker echo of the opening is ignored; real speech interrupts it',async()=>{
  const {session,calls}=setup();let paused=false;
- session.activeId='opening:call-one';session.player={pause(){paused=true;},src:'blob:test'};
+ session.activeId='opening:call-one';session.playing=true;
+ session.speakingText='नमस्ते Demo, मैं मीरा, Relay Voice की AI assistant हूँ।';
+ session.player={pause(){paused=true;},src:'blob:test',volume:1};
  session.receive({type:'vad_speech_start'});
+ assert.equal(session.player.volume,0.2);
+ // Transcript recorded on 13 Nov when laptop speakers fed the greeting back into the mic.
+ session.receive({type:'Turn',transcript:'नमस्ते demo में मेरा।',end_of_turn:true,turn_order:'echo'});
+ assert.equal(paused,false);
+ assert.equal(session.player.volume,1);
+ assert.equal(session.queue.length,0);
+ session.receive({type:'Turn',transcript:'Mujhe booking karni hai',end_of_turn:true,turn_order:'real'});
  assert.equal(paused,true);
  assert.equal(session.player,null);
  await session.interruptAck;
@@ -184,4 +195,16 @@ test('server idle close pauses the microphone instead of reconnecting',async()=>
   assert.equal(session.reconnectTimer,undefined);
   assert.match(statuses.at(-1),/without speech/);
  }finally{Object.assign(globalThis,previous);await session.close();}
+});
+
+test('streamed chunks play back to back after a jitter lead, and re-buffer after a gap',async()=>{
+ const {session,created}=setup();
+ session.epoch=1;session.activeId='reply';
+ const starts=[];session.context.createBufferSource=()=>{const s={connect(){},start(t){starts.push(t);},stop(){}};created.push(s);return s;};
+ session.schedule(audio,24000,1);session.schedule(audio,24000,1);
+ assert.equal(starts[0],1.12);
+ assert.equal(starts[1],1.12+2/24000);
+ session.context.currentTime=5;session.schedule(audio,24000,1);
+ assert.equal(starts[2],5.12);
+ await session.close();
 });

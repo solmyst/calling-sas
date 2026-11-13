@@ -8,8 +8,11 @@ export class VoiceSession {
  }
  status(text){this.onStatus(text)}
  isCurrent(epoch){return !this.closed&&this.epoch===epoch}
+ // AI audio clock: the 24 kHz playback context, or the capture context in tests.
+ get out(){return this.playback||this.context}
  control(active){
-  this.playing=active;
+  if(this.playing&&!active)this.quietSince=performance.now();
+  this.playing=active;if(!active)this.duck(false);
   if(this.socket?.readyState===1)this.socket.send(JSON.stringify({type:'playback',active}));
  }
  async start(call,resume=false){
@@ -20,6 +23,9 @@ export class VoiceSession {
    const constraints={audio:{echoCancellation:{ideal:true},noiseSuppression:{ideal:true},autoGainControl:{ideal:true},channelCount:{ideal:1}}};
    this.media=this.getMicrophone?await this.getMicrophone(constraints):await navigator.mediaDevices.getUserMedia(constraints);
    this.context=new AudioContext();await this.context.resume();
+   // Gnani speech is 24 kHz. Playing it in a 24 kHz context avoids per-chunk resampling clicks.
+   try{this.playback=new AudioContext({sampleRate:24000});await this.playback.resume();}catch{this.playback=null;}
+   this.output=this.out.createGain();this.output.connect(this.out.destination);
    await this.context.audioWorklet.addModule(`${this.basePath}/static/pcm-capture.js`);
    this.processor=new AudioWorkletNode(this.context,'pcm-capture');
    this.input=this.context.createMediaStreamSource(this.media);
@@ -76,13 +82,28 @@ export class VoiceSession {
    catch{this.retryConnection();}
   },delay);
  }
+ // Speaker echo of the AI's own voice must not cut the AI off. While it is audible
+ // (or just stopped), a transcript made mostly of the AI's words is treated as echo.
+ isEcho(text){
+  const recent=this.playing||this.activeId?.startsWith('opening:')||performance.now()-(this.quietSince||0)<1500;
+  if(!recent||!this.speakingText)return false;
+  const words=s=>s.toLowerCase().match(/[\p{L}\p{N}]+/gu)||[];
+  const said=new Set(words(this.speakingText)),heard=words(text);
+  return heard.length>0&&heard.filter(w=>said.has(w)).length/heard.length>=0.5;
+ }
+ duck(on){
+  if(this.output)this.output.gain.setTargetAtTime(on?0.2:1,this.out.currentTime,0.03);
+  if(this.player)this.player.volume=on?0.2:1;
+ }
  receive(message){
   if(this.closed||this.paused)return;
+  // Voice activity only lowers the AI's volume; a real transcript is what interrupts.
   if(message.type==='vad_speech_start'){
-   this.interrupt();this.status('Listening… go ahead.');return;
+   if(this.playing)this.duck(true);
+   this.status('Listening… go ahead.');return;
   }
   if(message.type==='vad_speech_end'){
-   this.speechEndedAt=performance.now();return;
+   this.speechEndedAt=performance.now();this.duck(false);return;
   }
   if(message.type==='processing'){if(!this.playing)this.status('Understanding…');return;}
   if(message.type!=='Turn')return;
@@ -94,6 +115,7 @@ export class VoiceSession {
   this.pendingAsrMs=this.speechEndedAt?Math.max(0,Math.round(performance.now()-this.speechEndedAt)):null;
   this.pendingSttProviderMs=Number.isFinite(Number(message.stt_ms))?Math.max(0,Math.round(Number(message.stt_ms))):null;
   this.speechEndedAt=0;
+  if(this.isEcho(text)){this.duck(false);return;}
   // Even a short word below the VAD duration threshold can be a real correction.
   this.interrupt();this.queue.push(text);
   clearTimeout(this.turnTimer);this.turnTimer=setTimeout(()=>this.drain(),80);
@@ -108,7 +130,7 @@ export class VoiceSession {
  interrupt(){
   const requestId=this.activeId;
   if(!requestId)return this.interruptAck;
-  const playedMs=this.playStarted?Math.max(0,Math.round((this.context?.currentTime-this.playStarted)*1000)):0;
+  const playedMs=this.playStarted?Math.max(0,Math.round((this.out?.currentTime-this.playStarted)*1000)):0;
   this.epoch++;this.activeId=null;this.processing=false;
   this.controller?.abort();this.controller=null;this.stopPlayback();
   const customerText=this.currentInput||'';this.currentInput='';
@@ -119,6 +141,7 @@ export class VoiceSession {
  }
  async opening(){
   const epoch=++this.epoch;this.activeId=`opening:${this.call.id}`;this.processing=true;this.currentInput='';
+  this.speakingText=this.call.transcript?.[0]?.text||'';
   const controller=new AbortController();this.controller=controller;
   this.status('Preparing the opening…');
   try{
@@ -141,7 +164,7 @@ export class VoiceSession {
   const player=new Audio(this.audioURL);this.player=player;
   player.onended=()=>{if(this.isCurrent(epoch)){this.stopPlayback();this.activeId=null;this.status('Listening… speak naturally.');}};
   player.onerror=()=>{if(this.isCurrent(epoch)){this.stopPlayback();this.activeId=null;this.status('Audio playback failed. The transcript remains available.');}};
-  this.playStarted=this.context.currentTime;this.control(true);this.status('AI is speaking · you can interrupt');
+  this.playStarted=this.out.currentTime;this.control(true);this.status('AI is speaking · you can interrupt');
   try{await player.play();}catch{this.stopPlayback();throw new Error('Audio playback was blocked. Click Resume microphone and try again.');}
  }
  async drain(){
@@ -188,7 +211,7 @@ export class VoiceSession {
     for(const line of lines){
      if(!line.trim())continue;if(!this.isCurrent(epoch))return;
      const event=JSON.parse(line);
-     if(event.type==='reply'){clearTimeout(this.backchannelTimer);this.backchannelTimer=null;this.call=event.call;this.onCall(event.call);this.status('Preparing voice…');}
+     if(event.type==='reply'){clearTimeout(this.backchannelTimer);this.backchannelTimer=null;this.call=event.call;this.speakingText=event.call.transcript?.at(-1)?.text||'';this.onCall(event.call);this.status('Preparing voice…');}
      if(event.type==='audio')this.schedule(event.audio,event.sample_rate,epoch);
      if(event.type==='complete')this.finished=true;
      if(event.type==='error')throw new Error(event.message);
@@ -201,10 +224,11 @@ export class VoiceSession {
  schedule(audio,sampleRate,epoch,interstitial=false){
   if(!this.isCurrent(epoch))return;
   const bytes=Uint8Array.from(atob(audio),c=>c.charCodeAt(0)),view=new DataView(bytes.buffer);
-  const buffer=this.context.createBuffer(1,bytes.length/2,sampleRate),channel=buffer.getChannelData(0);
+  const out=this.out,buffer=out.createBuffer(1,bytes.length/2,sampleRate),channel=buffer.getChannelData(0);
   for(let i=0;i<channel.length;i++)channel[i]=view.getInt16(i*2,true)/32768;
-  const source=this.context.createBufferSource();source.buffer=buffer;source.connect(this.context.destination);
-  this.nextAudioTime=Math.max(this.context.currentTime+0.04,this.nextAudioTime);
+  const source=out.createBufferSource();source.buffer=buffer;source.connect(this.output||out.destination);
+  // Start 120 ms ahead (and again after a gap) so network jitter does not cause audible breaks.
+  if(this.nextAudioTime<out.currentTime+0.02)this.nextAudioTime=out.currentTime+0.12;
   if(!this.playStarted)this.playStarted=this.nextAudioTime;
   this.sources.add(source);source.start(this.nextAudioTime);this.nextAudioTime+=buffer.duration;
   this.control(true);this.status('AI is speaking · you can interrupt');
@@ -218,7 +242,7 @@ export class VoiceSession {
   this.paused=!this.paused;
   if(this.paused){this.interrupt();this.status('Microphone paused.');}
   else{
-   await this.context?.resume();
+   await this.context?.resume();await this.playback?.resume();
    if(this.socket?.readyState!==1){
     this.status('Reconnecting microphone…');this.reconnects=0;
     try{await this.connect();}catch{this.retryConnection();return;}
@@ -234,6 +258,8 @@ export class VoiceSession {
   this.controller?.abort();this.controller=null;this.stopPlayback();this.socket?.close();this.socket=null;
   this.processor?.disconnect();this.processor=null;this.input?.disconnect();this.highpass?.disconnect();
   this.media?.getTracks().forEach(track=>track.stop());this.media=null;
-  const context=this.context;this.context=null;if(context&&context.state!=='closed')await context.close();
+  this.output=null;
+  for(const context of [this.context,this.playback])if(context&&context.state!=='closed')await context.close();
+  this.context=this.playback=null;
  }
 }
