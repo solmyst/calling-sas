@@ -104,6 +104,7 @@ async def run_call(websocket, start, call, *, voice, vad, connect, save, is_live
     stream_sid = start.get("stream_sid") or (start.get("start") or {}).get("stream_sid")
     language = call["agent_snapshot"].get("language", "English")
     delivery = call["agent_snapshot"].get("delivery", "warm")
+    agent_voice = call["agent_snapshot"].get("voice") or None
     state = {"reply": None, "speaking_id": None, "playing": False}
     started = last_speech = time.monotonic()
     send_lock = asyncio.Lock()
@@ -116,7 +117,7 @@ async def run_call(websocket, start, call, *, voice, vad, connect, save, is_live
 
     async def speak(text, response_id):
         state["speaking_id"] = response_id
-        async for chunk in voice.speech_chunks(text, language, delivery):
+        async for chunk in voice.speech_chunks(text, language, delivery, voice=agent_voice):
             state["playing"] = True
             await send({"event": "media", "media": {"payload": fmt.from_tts(chunk)}})
         await send({"event": "mark", "mark": {"name": response_id}})

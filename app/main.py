@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .store import Store, workspace
 from . import accounts, telephony
+from .gnani import VOICES
 from .engine import OPT_OUT, DemoProvider, LiveCallingDisabled, now, private
 from .seed import seed
 from .voice import VoiceConfigurationError, VoiceProviderError
@@ -55,6 +56,14 @@ class Agent(Model):
     prompt: str = Field(min_length=1, max_length=6000)
     context: str = Field(min_length=1, max_length=6000)
     color: Literal["mint", "peach", "lavender"] = "mint"
+    voice: str = Field(default="", max_length=40)  # empty uses GNANI_VOICE
+
+    @field_validator("voice")
+    @classmethod
+    def known_voice(cls, v):
+        if v and v not in VOICES:
+            raise ValueError("Choose a voice from the list")
+        return v
 
 
 class Contact(Model):
@@ -209,7 +218,14 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
     store = Store(
         db_path or os.getenv("DATABASE_PATH", str(ROOT / "runtime/relay.sqlite"))
     )
-    seed(store)
+    with store.transaction() as db:
+        spaces = Store.workspaces(db)
+    for space in spaces:  # seed upgrades reach trial workspaces too
+        scope = workspace.set(space)
+        try:
+            seed(store)
+        finally:
+            workspace.reset(scope)
     provider = DemoProvider()
     if voice_engine is not None:
         voice = voice_engine
@@ -417,6 +433,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             "automatic_barge_in": True,
             "vad": "Silero v5",
             "memory_scope": "conversation",
+            "voices": [{"name": k, "label": v} for k, v in VOICES.items()],
             "workspace": "Relay Voice workspace",
             "authentication": bool(password),
             "version": "0.2.0",
@@ -595,7 +612,8 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
             raise HTTPException(409, "This is not a browser voice session.")
         agent = c["agent_snapshot"]
         try:
-            audio = await voice.speak(c["transcript"][0]["text"], agent.get("language", "English"), agent.get("delivery", "warm"))
+            audio = await voice.speak(c["transcript"][0]["text"], agent.get("language", "English"), agent.get("delivery", "warm"),
+                                      voice=agent.get("voice") or None)
         except (VoiceConfigurationError, VoiceProviderError) as e:
             raise HTTPException(503, str(e))
         return {"audio": base64.b64encode(audio).decode(), "content_type": "audio/wav"}
@@ -760,12 +778,12 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
         agent = c["agent_snapshot"]
         language = agent.get("language", "English")
         delivery = agent.get("delivery", "warm")
-        key = (language, delivery)
+        key = (language, delivery, agent.get("voice"))
         audio = backchannel_cache.get(key)
         if audio is None:
             phrase = {"Hindi": "जी।", "Hinglish": "Ji.", "English": "Right."}.get(language, "Right.")
             chunks = []
-            async for chunk in voice.speech_chunks(phrase, language, delivery):
+            async for chunk in voice.speech_chunks(phrase, language, delivery, voice=agent.get("voice") or None):
                 chunks.append(chunk)
             audio = b"".join(chunks)
             if not audio or len(audio) > 192_000:
@@ -839,6 +857,7 @@ def create_app(db_path=None, voice_engine=None, vad_factory=None, request_extrac
                     answer,
                     c["agent_snapshot"].get("language", "English"),
                     c["agent_snapshot"].get("delivery", "warm"),
+                    voice=c["agent_snapshot"].get("voice") or None,
                     **({"connection": prepared_connection} if prepared_connection is not None else {}),
                 )
                 async for chunk in speech:

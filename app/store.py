@@ -78,6 +78,12 @@ class Store:
         )
 
     @staticmethod
+    def workspaces(db):
+        """Every user workspace that holds records, always including MAIN."""
+        rows = db.execute("SELECT DISTINCT ws FROM records WHERE ws != ?", (SYSTEM,))
+        return sorted({MAIN} | {r[0] for r in rows})
+
+    @staticmethod
     def cached(db, id):
         r = db.execute(
             "SELECT body FROM requests WHERE id=?", (workspace.get() + "|" + id,)

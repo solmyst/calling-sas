@@ -74,11 +74,18 @@ DEMO_FLOWS = [
     },
 ]
 
+# Distinct Gnani voices so each demo agent sounds like its own persona.
+AGENT_VOICES = {
+    "agent-sales": "Devansh", "agent-booking": "Kalpana", "demo-sales": "Riyaa",
+    "demo-helper": "Tarika", "demo-cx": "Yashraj", "demo-booking": "Chetana",
+}
+
+
 def seed(store):
     with store.transaction() as db:
         marker = Store.get(db, "meta", "seed")
         version = marker.get("version", 0) if marker else 0
-        if version >= 4:
+        if version >= 5:
             return
         if version < 2:
             # Remove only records shipped by the former fictional showcase.
@@ -95,4 +102,10 @@ def seed(store):
         for agent in DEMO_FLOWS:
             if not Store.get(db, "agents", agent["id"]):
                 Store.put(db, "agents", agent)
-        Store.put(db, "meta", {"id": "seed", "version": 4})
+        # v5: give shipped agents their own voice, keeping any voice the user already chose.
+        for agent_id, voice in AGENT_VOICES.items():
+            agent = Store.get(db, "agents", agent_id)
+            if agent and not agent.get("voice"):
+                agent["voice"] = voice
+                Store.put(db, "agents", agent)
+        Store.put(db, "meta", {"id": "seed", "version": 5})

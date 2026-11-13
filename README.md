@@ -105,7 +105,7 @@ BIFROST_MODELS=
 |---|---|
 | `GNANI_API_KEY` | Server-side speech recognition and synthesis authentication |
 | `GNANI_STT_MODEL`, `GNANI_TTS_MODEL` | Speech model IDs supported by the account |
-| `GNANI_VOICE` | A voice compatible with the selected TTS model; currently configured server-wide |
+| `GNANI_VOICE` | Fallback voice for agents without one. Each agent picks its own Timbre v3.0 voice in the agent editor; the demo agents ship with six different voices |
 | `GNANI_SILENCE_MS` | Recognition endpointing setting; tune through evaluation rather than assuming lower is better |
 | `GNANI_SPEED`, `GNANI_AUDIO_TAGS` | Synthesis speed and optional delivery tags |
 | `BIFROST_URL`, `BIFROST_VK`, `BIFROST_MODELS`, `BIFROST_REASONING_EFFORT` | Approved conversation gateway URL, virtual key and model ID; reasoning defaults to `minimal` for lower-latency voice replies |

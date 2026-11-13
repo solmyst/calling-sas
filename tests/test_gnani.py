@@ -40,7 +40,7 @@ class FakeStreamingVoice:
             raise VoiceProviderError("model unavailable")
         return "I can record your appointment preference for the team to review."
 
-    async def speech_chunks(self, text, language, delivery):
+    async def speech_chunks(self, text, language, delivery, voice=None):
         if self.fail_audio:
             raise VoiceProviderError("tts unavailable")
         yield b"\x01\x00" * 240
@@ -63,7 +63,7 @@ class FakePrewarmedVoice(FakeStreamingVoice):
         await asyncio.sleep(0)
         return await super().reply(call)
 
-    async def speech_chunks(self, text, language, delivery, connection=None):
+    async def speech_chunks(self, text, language, delivery, connection=None, voice=None):
         if connection is not self.connection:
             raise AssertionError("Prepared TTS connection was not reused")
         yield b"\x01\x00" * 240
@@ -276,3 +276,53 @@ class GnaniTests(unittest.TestCase):
                     with self.assertRaises(WebSocketDisconnect) as closed:
                         ws.receive_json()
         self.assertEqual(closed.exception.code, 4408)
+
+
+class AgentVoiceTests(unittest.TestCase):
+    def test_payload_uses_agent_voice_and_falls_back_to_server_voice(self):
+        self.assertEqual(engine().synthesis_payload("Hello", voice="Yashraj")["voice"], "Yashraj")
+        self.assertEqual(engine().synthesis_payload("Hello")["voice"], "Shivani")
+
+    def test_seeded_agents_get_distinct_voices_and_upgrade_keeps_user_choice(self):
+        from app.gnani import VOICES
+        from app.store import workspace
+        with tempfile.TemporaryDirectory() as temp:
+            store = Store(temp + "/db.sqlite")
+            seed(store)
+            with store.transaction() as db:
+                voices = [a["voice"] for a in Store.all(db, "agents")]
+                agent = Store.get(db, "agents", "demo-cx")
+                del agent["voice"]
+                Store.put(db, "agents", agent)
+                chosen = Store.get(db, "agents", "demo-sales")
+                chosen["voice"] = "Lakshmi"
+                Store.put(db, "agents", chosen)
+                Store.put(db, "meta", {"id": "seed", "version": 4})
+                Store.put(db, "agents", dict(agent, voice=None), ws="trial-user")  # a pre-voice trial workspace
+            self.assertEqual(len(set(voices)), len(voices))
+            self.assertTrue(set(voices) <= set(VOICES))
+            with patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}):
+                create_app(temp + "/db.sqlite", voice_engine=FakeStreamingVoice())
+            with store.transaction() as db:
+                self.assertEqual(Store.get(db, "agents", "demo-cx")["voice"], "Yashraj")
+                self.assertEqual(Store.get(db, "agents", "demo-sales")["voice"], "Lakshmi")
+                self.assertEqual(Store.get(db, "agents", "demo-cx", ws="trial-user")["voice"], "Yashraj")
+            self.assertEqual(workspace.get(), "main")
+
+    def test_agent_voice_is_validated_and_reaches_speech(self):
+        spoken = []
+
+        class Voice(FakeStreamingVoice):
+            async def speak(self, text, language="English", delivery="warm", voice=None):
+                spoken.append(voice)
+                return b"RIFF"
+
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"APP_ENV": "local", "DEMO_PASSWORD": ""}):
+            with TestClient(create_app(temp + "/db.sqlite", voice_engine=Voice())) as c:
+                agent = c.get("/api/state").json()["agents"]
+                cx = next(a for a in agent if a["id"] == "demo-cx")
+                self.assertEqual(c.put("/api/agents/demo-cx", json=dict(cx, voice="Nobody")).status_code, 422)
+                self.assertEqual(c.put("/api/agents/demo-cx", json=dict(cx, voice="Avinash")).status_code, 200)
+                call = c.post("/api/calls", json={"agent_id": "demo-cx", "contact_id": "contact-1", "mode": "browser"}).json()
+                self.assertEqual(c.post(f"/api/calls/{call['id']}/voice/opening").status_code, 200)
+        self.assertEqual(spoken, ["Avinash"])

@@ -37,6 +37,17 @@ def browser_wav(audio):
         raise VoiceProviderError('Gnani returned invalid WAV audio.') from None
 
 
+# Timbre v3.0 catalogue: https://docs.gnani.ai/api/TTS/available-voices.md
+# Every v3.0 voice speaks all supported Indian languages, including English and Hindi.
+VOICES = {
+    "Avinash": "Male · professional", "Devansh": "Male · conversational", "Harshad": "Male · professional",
+    "Prakash": "Male · professional", "Shubham": "Male · energetic", "Yashraj": "Male · warm",
+    "Chetana": "Female · warm", "Kalpana": "Female · warm", "Lakshmi": "Female · energetic",
+    "Riyaa": "Female · confident", "Shivani": "Female · warm", "Tarika": "Female · warm",
+    "Vasudha": "Female · energetic",
+}
+
+
 @dataclass(frozen=True)
 class GnaniConfig:
     api_key: str
@@ -110,7 +121,7 @@ class GnaniVoiceEngine(VoiceEngine):
                     "stt_ms": event.get("latency")}
         return None
 
-    def synthesis_payload(self, text, language="English", container="wav", delivery="neutral"):
+    def synthesis_payload(self, text, language="English", container="wav", delivery="neutral", voice=None):
         # Expression belongs to speech rendering, not the saved customer transcript.
         # Only use documented business-appropriate tags, never arbitrary LLM tags.
         text = re.sub(r"<[^>]*>", "", text).strip()
@@ -119,21 +130,21 @@ class GnaniVoiceEngine(VoiceEngine):
             if delivery == "upbeat":
                 text = "<excited> " + text
         return {
-            "text": text, "model": self.gnani.tts_model, "voice": self.gnani.voice,
+            "text": text, "model": self.gnani.tts_model, "voice": voice or self.gnani.voice,
             "language": {"English": "en-IN", "Hindi": "hi-IN", "Hinglish": "hi-en"}.get(language, "auto"),
             "speed": self.gnani.speed,
             "audio_config": {"sample_rate": 24000, "num_channels": 1, "sample_width": 2,
                              "encoding": "linear_pcm", "container": container},
         }
 
-    async def speak(self, text, language="English", delivery="neutral"):
+    async def speak(self, text, language="English", delivery="neutral", voice=None):
         self.require_ready()
         client = self._http()
         try:
             response = await client.post(
                 "https://api.vachana.ai/api/v1/tts/inference",
                 headers={"X-API-Key-ID": self.gnani.api_key},
-                json=self.synthesis_payload(text, language, delivery=delivery),
+                json=self.synthesis_payload(text, language, delivery=delivery, voice=voice),
             )
             if response.status_code >= 400 or not response.content.startswith(b"RIFF"):
                 raise VoiceProviderError("Gnani voice generation is unavailable. Check voice access and credits.")
@@ -157,7 +168,7 @@ class GnaniVoiceEngine(VoiceEngine):
     async def close_speech(self, connection):
         await connection.close()
 
-    async def speech_chunks(self, text, language="English", delivery="neutral", connection=None):
+    async def speech_chunks(self, text, language="English", delivery="neutral", connection=None, voice=None):
         """Yield raw 24 kHz PCM as generated, rather than awaiting a full file."""
         self.require_ready()
         try:
@@ -167,18 +178,18 @@ class GnaniVoiceEngine(VoiceEngine):
                     additional_headers={"X-API-Key-ID": self.gnani.api_key},
                     compression=None, open_timeout=10, max_size=4_000_000,
                 ) as upstream:
-                    async for chunk in self._speech_chunks(upstream, text, language, delivery):
+                    async for chunk in self._speech_chunks(upstream, text, language, delivery, voice):
                         yield chunk
             else:
-                async for chunk in self._speech_chunks(connection, text, language, delivery):
+                async for chunk in self._speech_chunks(connection, text, language, delivery, voice):
                     yield chunk
         except VoiceProviderError:
             raise
         except Exception:
             raise VoiceProviderError("Gnani realtime voice connection failed.") from None
 
-    async def _speech_chunks(self, upstream, text, language, delivery):
-        await upstream.send(json.dumps(self.synthesis_payload(text, language, "raw", delivery)))
+    async def _speech_chunks(self, upstream, text, language, delivery, voice=None):
+        await upstream.send(json.dumps(self.synthesis_payload(text, language, "raw", delivery, voice)))
         while True:
             message = await asyncio.wait_for(upstream.recv(), 25)
             event = json.loads(message)

@@ -33,7 +33,7 @@ async function followPhoneCall(id){
 function search(input,type){const pos=input.selectionStart;query=input.value;render();const el=$('#'+type+'-search');el.focus();el.setSelectionRange(pos,pos)}
 function bind(){
  document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>safely(()=>action(b.dataset.action),b));
- document.querySelectorAll('[data-edit-agent]').forEach(b=>b.onclick=()=>editAgent(find('agents',b.dataset.editAgent),refresh));
+ document.querySelectorAll('[data-edit-agent]').forEach(b=>b.onclick=()=>editAgent(find('agents',b.dataset.editAgent),refresh,data.settings.voices));
  document.querySelectorAll('[data-test-agent]').forEach(b=>b.onclick=()=>{if(currentCall?.status==='in_progress'){toast('End the current simulation before switching agents.');navigate('studio');return}selectedAgent=b.dataset.testAgent;currentCall=null;navigate('studio')});
  document.querySelectorAll('[data-edit-contact]').forEach(b=>b.onclick=()=>editContact(find('contacts',b.dataset.editContact),refresh));
  document.querySelectorAll('[data-edit-workflow]').forEach(b=>b.onclick=()=>editWorkflow(find('workflows',b.dataset.editWorkflow),data,refresh));
@@ -49,7 +49,7 @@ function bind(){
 }
 async function action(name){
  if(V.nav.some(x=>x[0]===name)){navigate(name);return}
- if(name==='new-agent')return editAgent(null,refresh);
+ if(name==='new-agent')return editAgent(null,refresh,data.settings.voices);
  if(name==='new-contact')return editContact(null,refresh);
  if(name==='new-workflow')return editWorkflow(null,data,refresh);
  if(name==='start-call'){

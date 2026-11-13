@@ -22,7 +22,7 @@ class FakeVoiceEngine:
         assert call["mode"] == "browser"
         return "Thanks. What usually happens when your sales team gets busy?"
 
-    async def speak(self, text, language="English", delivery="warm"):
+    async def speak(self, text, language="English", delivery="warm", voice=None):
         return b"RIFFfake-wav"
 
 

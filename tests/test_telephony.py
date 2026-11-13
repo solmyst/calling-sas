@@ -73,7 +73,7 @@ class PhoneVoice:
         self.replies.append(call["transcript"][-1]["text"])
         return "Happy to help. Which day suits you?"
 
-    async def speech_chunks(self, text, language, delivery):
+    async def speech_chunks(self, text, language, delivery, voice=None):
         yield (np.full(480, 1000, dtype="<i2")).tobytes()  # 20 ms at 24 kHz
 
 
